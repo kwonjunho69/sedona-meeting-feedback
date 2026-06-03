@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>세도나 시니어타운 | 회의록 피드백 관리</title>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-light: #dbeafe;
+    --nursing: #0891b2;
+    --nursing-light: #cffafe;
+    --welfare: #7c3aed;
+    --welfare-light: #ede9fe;
+    --success: #16a34a;
+    --success-light: #dcfce7;
+    --danger: #dc2626;
+    --danger-light: #fee2e2;
+    --warning: #d97706;
+    --warning-light: #fef3c7;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-900: #111827;
+    --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,.1),0 4px 6px rgba(0,0,0,.05);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,sans-serif;background:var(--gray-50);color:var(--gray-900);min-height:100vh}
+
+  /* ── Header ── */
+  header{background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;padding:16px 24px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow-lg)}
+  header .logo{font-size:24px}
+  header h1{font-size:18px;font-weight:700}
+  header p{font-size:12px;opacity:.8;margin-top:2px}
+  .header-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .api-status{display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 12px;border-radius:20px;background:rgba(255,255,255,.15);cursor:pointer;transition:.2s}
+  .api-status:hover{background:rgba(255,255,255,.25)}
+  .api-dot{width:8px;height:8px;border-radius:50%;background:#f87171}
+  .api-dot.ok{background:#4ade80}
+
+  /* ── Tabs ── */
+  .nav-tabs{background:#fff;border-bottom:2px solid var(--gray-200);display:flex;padding:0 24px;gap:4px;overflow-x:auto}
+  .nav-tab{padding:12px 20px;cursor:pointer;font-size:14px;font-weight:600;color:var(--gray-500);border-bottom:3px solid transparent;white-space:nowrap;transition:.2s;margin-bottom:-2px}
+  .nav-tab:hover{color:var(--primary)}
+  .nav-tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+  .tab-badge{display:inline-block;background:var(--danger);color:#fff;border-radius:10px;font-size:11px;padding:1px 6px;margin-left:6px}
+
+  /* ── Layout ── */
+  .main{max-width:1200px;margin:0 auto;padding:24px}
+  .panel{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:16px}
+  .panel-title{font-size:15px;font-weight:700;color:var(--gray-700);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .tab-content{display:none}
+  .tab-content.active{display:block}
+
+  /* ── Buttons ── */
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:.15s}
+  .btn-primary{background:var(--primary);color:#fff}
+  .btn-primary:hover{background:#1d4ed8}
+  .btn-ai{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff}
+  .btn-ai:hover{background:linear-gradient(135deg,#4f46e5,#7c3aed)}
+  .btn-outline{background:#fff;color:var(--gray-700);border:1.5px solid var(--gray-300)}
+  .btn-outline:hover{background:var(--gray-50)}
+  .btn-sm{padding:5px 10px;font-size:12px}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+
+  /* ── Upload ── */
+  .upload-area{border:2px dashed var(--gray-300);border-radius:var(--radius);padding:28px;text-align:center;cursor:pointer;transition:.2s;background:var(--gray-50)}
+  .upload-area:hover,.upload-area.drag-over{border-color:var(--primary);background:var(--primary-light)}
+  .upload-area .upload-icon{font-size:32px;margin-bottom:8px}
+  .upload-area p{color:var(--gray-500);font-size:13px}
+  .upload-area strong{color:var(--primary)}
+
+  /* ── Chat / AI Panel ── */
+  .chat-container{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+  .chat-msg{display:flex;gap:10px;align-items:flex-start}
+  .chat-msg.user{flex-direction:row-reverse}
+  .avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+  .avatar.ai{background:linear-gradient(135deg,#6366f1,#8b5cf6)}
+  .avatar.user{background:var(--primary)}
+  .bubble{max-width:85%;padding:12px 16px;border-radius:14px;font-size:14px;line-height:1.65}
+  .bubble.ai{background:var(--gray-100);color:var(--gray-900);border-top-left-radius:4px}
+  .bubble.user{background:var(--primary);color:#fff;border-top-right-radius:4px}
+  .bubble pre{white-space:pre-wrap;font-family:inherit;font-size:13px}
+  .typing-dots span{animation:dot 1.2s infinite;display:inline-block}
+  .typing-dots span:nth-child(2){animation-delay:.2s}
+  .typing-dots span:nth-child(3){animation-delay:.4s}
+  @keyframes dot{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+
+  /* ── Summary Cards ── */
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+  .summary-card{background:#fff;border-radius:var(--radius);padding:16px;text-align:center;box-shadow:var(--shadow);border-top:4px solid var(--gray-200)}
+  .summary-card.total{border-top-color:var(--primary)}
+  .summary-card.nursing{border-top-color:var(--nursing)}
+  .summary-card.welfare{border-top-color:var(--welfare)}
+  .summary-card.done{border-top-color:var(--success)}
+  .summary-card.pend{border-top-color:var(--warning)}
+  .summary-card .num{font-size:30px;font-weight:800}
+  .summary-card .label{font-size:12px;color:var(--gray-500);margin-top:4px}
+
+  /* ── Filter Bar ── */
+  .filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+  .filter-btn{padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;border:1.5px solid var(--gray-300);background:#fff;color:var(--gray-600);transition:.15s}
+  .filter-btn:hover{border-color:var(--primary);color:var(--primary)}
+  .filter-btn.active{background:var(--primary);border-color:var(--primary);color:#fff}
+  .filter-btn.nursing.active{background:var(--nursing);border-color:var(--nursing)}
+  .filter-btn.welfare.active{background:var(--welfare);border-color:var(--welfare)}
+  .filter-btn.pend.active{background:var(--warning);border-color:var(--warning)}
+  .filter-btn.done.active{background:var(--success);border-color:var(--success)}
+
+  /* ── Resident Sections ── */
+  .resident-section{margin-bottom:14px;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+  .resident-header{padding:12px 16px;background:var(--gray-100);display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+  .resident-header:hover{background:var(--gray-200)}
+  .resident-name{font-size:15px;font-weight:700}
+  .resident-count{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--gray-200);color:var(--gray-600)}
+  .resident-count.has-pending{background:var(--danger-light);color:var(--danger)}
+  .resident-body{background:#fff}
+  .collapse-arrow{margin-left:auto;font-size:12px;color:var(--gray-400);transition:.2s}
+  .collapse-arrow.open{transform:rotate(180deg)}
+
+  /* ── Feedback Items ── */
+  .feedback-item{padding:12px 16px;border-bottom:1px solid var(--gray-100);display:flex;align-items:flex-start;gap:12px;transition:.15s}
+  .feedback-item:last-child{border-bottom:none}
+  .feedback-item:hover{background:var(--gray-50)}
+  .feedback-item.done-item{opacity:.55}
+  .dept-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;flex-shrink:0}
+  .dept-badge.nursing{background:var(--nursing-light);color:var(--nursing)}
+  .dept-badge.welfare{background:var(--welfare-light);color:var(--welfare)}
+  .dept-badge.both{background:var(--gray-100);color:var(--gray-700)}
+  .feedback-text{flex:1;font-size:14px;color:var(--gray-700);line-height:1.5}
+  .feedback-item.done-item .feedback-text{text-decoration:line-through;color:var(--gray-400)}
+  .status-toggle{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;flex-shrink:0}
+  .toggle-circle{width:22px;height:22px;border-radius:50%;border:2px solid var(--gray-300);display:flex;align-items:center;justify-content:center;transition:.2s;font-size:12px}
+  .status-toggle.done .toggle-circle{background:var(--success);border-color:var(--success);color:#fff}
+  .status-label.done{color:var(--success)}
+  .status-label.pending{color:var(--gray-400)}
+
+  /* ── Priority badge ── */
+  .priority-badge{font-size:11px;padding:2px 7px;border-radius:6px;font-weight:700;background:var(--danger-light);color:var(--danger)}
+
+  /* ── Progress ── */
+  .progress-bar-wrap{background:var(--gray-200);border-radius:10px;height:8px;overflow:hidden;margin-top:8px}
+  .progress-bar-fill{height:100%;background:linear-gradient(90deg,var(--success),#22c55e);border-radius:10px;transition:.4s}
+
+  /* ── Name chips ── */
+  .name-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:12px}
+  .name-chip{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--primary-light);border-radius:8px;font-size:14px;font-weight:600;color:var(--primary)}
+  .name-chip .del-btn{cursor:pointer;color:var(--gray-400);font-size:17px;line-height:1;padding:0 2px}
+  .name-chip .del-btn:hover{color:var(--danger)}
+  .name-input-row{display:flex;gap:8px;margin-top:12px}
+  input[type=text]{flex:1;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;outline:none;transition:.15s}
+  input[type=text]:focus{border-color:var(--primary)}
+  input[type=password]{flex:1;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;outline:none;font-family:inherit;transition:.15s}
+  input[type=password]:focus{border-color:var(--primary)}
+  textarea{width:100%;padding:12px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;outline:none;resize:vertical;min-height:180px;font-family:inherit;line-height:1.65;transition:.15s}
+  textarea:focus{border-color:var(--primary)}
+  select{padding:8px 12px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;background:#fff;color:var(--gray-700);outline:none;cursor:pointer}
+  select:focus{border-color:var(--primary)}
+
+  /* ── Info / Toast / Modal ── */
+  .info-box{background:var(--primary-light);border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;font-size:13px;color:#1e40af;line-height:1.65;margin-bottom:16px}
+  .info-box strong{font-weight:700}
+  .toast{position:fixed;bottom:24px;right:24px;background:var(--gray-900);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;opacity:0;transform:translateY(10px);transition:.3s;z-index:1000;pointer-events:none}
+  .toast.show{opacity:1;transform:translateY(0)}
+  .toast.success{background:var(--success)}
+  .toast.error{background:var(--danger)}
+
+  /* Modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;display:none;align-items:center;justify-content:center}
+  .modal-overlay.open{display:flex}
+  .modal{background:#fff;border-radius:14px;padding:28px;max-width:460px;width:95%;box-shadow:var(--shadow-lg)}
+  .modal h2{font-size:17px;font-weight:700;margin-bottom:4px}
+  .modal p{font-size:13px;color:var(--gray-500);margin-bottom:16px;line-height:1.6}
+  .modal-row{display:flex;gap:8px;margin-bottom:10px}
+  .modal-row label{font-size:13px;font-weight:600;color:var(--gray-700);margin-bottom:4px;display:block}
+
+  /* ── Empty / Loading ── */
+  .empty-state{text-align:center;padding:48px 20px;color:var(--gray-400)}
+  .empty-state .ei{font-size:48px;margin-bottom:12px}
+  .empty-state p{font-size:14px}
+  .spinner{width:22px;height:22px;border:3px solid var(--gray-200);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ── Name correction badge ── */
+  .corrected-badge{font-size:11px;color:var(--warning);background:var(--warning-light);padding:2px 7px;border-radius:6px;margin-left:6px}
+
+  /* ── AI thinking stream ── */
+  .stream-box{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:14px;font-size:13px;line-height:1.7;color:var(--gray-700);white-space:pre-wrap;max-height:260px;overflow-y:auto;margin-top:8px}
+
+  @media(max-width:640px){.main{padding:12px}.summary-grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header>
+  <div class="logo">🏥</div>
+  <div>
+    <h1>세도나 시니어타운 회의록 피드백 관리</h1>
+    <p>AI 에이전트 기반 간호팀 · 복지팀 업무 피드백 추적 시스템</p>
+  </div>
+  <div class="header-right">
+    <div class="api-status" onclick="openApiModal()" id="apiStatusBtn">
+      <div class="api-dot" id="apiDot"></div>
+      <span id="apiStatusLabel">API 키 설정</span>
+    </div>
+  </div>
+</header>
+
+<!-- ===== NAV ===== -->
+<div class="nav-tabs">
+  <div class="nav-tab active" onclick="switchTab('upload')">📄 회의록 분석</div>
+  <div class="nav-tab" onclick="switchTab('feedback')" id="feedbackTab">
+    📋 피드백 현황
+    <span class="tab-badge" id="pendingBadge" style="display:none"></span>
+  </div>
+  <div class="nav-tab" onclick="switchTab('residents')">👥 어르신 명단</div>
+</div>
+
+<div class="main">
+
+  <!-- ===================== TAB 1: UPLOAD + AI ===================== -->
+  <div class="tab-content active" id="tab-upload">
+
+    <div class="info-box">
+      <strong>🤖 AI 에이전트 분석:</strong> Google Gemini AI가 회의록을 읽고 간호·복지 피드백을 어르신별로 자동 분류합니다.<br>
+      API 키는 <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary);font-weight:700">aistudio.google.com/apikey</a>에서 발급 (무료 티어 포함). 어르신 명단 등록 시 음성인식 오류 이름도 자동 교정.
+    </div>
+
+    <!-- Upload -->
+    <div class="panel">
+      <div class="panel-title">📁 회의록 입력</div>
+      <div class="upload-area" id="uploadArea"
+           onclick="document.getElementById('fileInput').click()"
+           ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+        <div class="upload-icon">📄</div>
+        <p><strong>파일 클릭 또는 드래그</strong> — .txt 파일</p>
+        <p>한글 인코딩(UTF-8 / EUC-KR) 자동 감지</p>
+      </div>
+      <input type="file" id="fileInput" accept=".txt" style="display:none" onchange="loadFile(event)">
+      <div style="margin:12px 0 6px;font-size:13px;font-weight:600;color:var(--gray-500);">또는 직접 입력 / 붙여넣기</div>
+      <textarea id="meetingText" placeholder="회의록 내용을 여기에 붙여넣으세요...
+
+예시)
+2024년 3월 케어 회의록
+
+홍길동 어르신 - 혈압약 처방 확인 필요, 복지팀 가족 연락 요청
+박순자 어르신 - 욕창 예방 체위변경 간호 확인, 외출 프로그램 복지팀 조율
+최명수 어르신 - 낙상 위험 평가 재실시 간호팀, 보호자 상담 복지팀"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+        <button class="btn btn-ai" onclick="runAiAnalysis()" id="aiBtn">
+          🤖 AI 에이전트 분석
+        </button>
+        <button class="btn btn-outline" onclick="clearInput()">🗑 초기화</button>
+        <span id="fileNameLabel" style="font-size:13px;color:var(--gray-500)"></span>
+      </div>
+    </div>
+
+    <!-- AI Chat Panel -->
+    <div class="panel" id="chatPanel" style="display:none">
+      <div class="panel-title">🤖 AI 에이전트 분석 결과</div>
+      <div class="chat-container" id="chatContainer"></div>
+    </div>
+
+  </div>
+
+  <!-- ===================== TAB 2: FEEDBACK ===================== -->
+  <div class="tab-content" id="tab-feedback">
+
+    <div id="feedbackEmpty" class="empty-state">
+      <div class="ei">📋</div>
+      <p>회의록을 AI 분석하면 피드백 목록이 여기에 표시됩니다.</p>
+    </div>
+
+    <div id="feedbackContent" style="display:none">
+
+      <div class="summary-grid" id="summaryCards"></div>
+
+      <div class="panel">
+        <div class="panel-title">📊 처리 현황</div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--gray-500);margin-bottom:4px">
+          <span>전체 처리율</span>
+          <span id="progressText">0 / 0</span>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div class="panel" id="summaryPanel">
+        <div class="panel-title">📝 AI 회의 요약</div>
+        <div class="stream-box" id="summaryText"></div>
+      </div>
+
+      <div class="filter-bar">
+        <span style="font-size:13px;font-weight:600;color:var(--gray-500)">필터:</span>
+        <button class="filter-btn active" onclick="setFilter('all',this)">전체</button>
+        <button class="filter-btn nursing" onclick="setFilter('nursing',this)">💉 간호</button>
+        <button class="filter-btn welfare" onclick="setFilter('welfare',this)">🤝 복지</button>
+        <button class="filter-btn pend" onclick="setFilter('pending',this)">⏳ 미처리</button>
+        <button class="filter-btn done" onclick="setFilter('done',this)">✅ 처리완료</button>
+        <select id="residentFilter" onchange="renderFeedback()" style="margin-left:auto">
+          <option value="">전체 어르신</option>
+        </select>
+      </div>
+
+      <div id="feedbackList"></div>
+
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="exportReport()">📥 미처리 목록 내보내기</button>
+        <button class="btn btn-outline" onclick="markAllDone()">✅ 전체 처리완료</button>
+        <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="resetAllStatus()">↺ 상태 초기화</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== TAB 3: RESIDENTS ===================== -->
+  <div class="tab-content" id="tab-residents">
+
+    <div class="info-box">
+      <strong>📌 어르신 명단 등록:</strong> 이름을 미리 등록하면 AI가 음성인식 오류로 잘못 인식된 이름을 자동 교정합니다.<br>
+      예: "홍길도" → "홍길동" / "박순재" → "박순자"
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">👥 등록된 어르신 명단
+        <span style="font-size:13px;font-weight:400;color:var(--gray-500)" id="residentCount"></span>
+      </div>
+      <div class="name-input-row">
+        <input type="text" id="newNameInput" placeholder="성함 입력 (예: 홍길동)" maxlength="10"
+               onkeydown="if(event.key==='Enter')addName()">
+        <button class="btn btn-primary" onclick="addName()">➕ 추가</button>
+      </div>
+      <div class="name-input-row" style="margin-top:8px">
+        <textarea id="bulkNameInput" placeholder="일괄 추가 — 한 줄에 한 명씩&#10;홍길동&#10;박순자&#10;김철수" style="min-height:80px"></textarea>
+      </div>
+      <button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="addBulkNames()">📋 일괄 추가</button>
+      <div class="name-grid" id="nameGrid"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">📁 명단 파일 불러오기</div>
+      <p style="font-size:13px;color:var(--gray-500);margin-bottom:10px">한 줄에 한 명씩 작성된 .txt 파일을 업로드하세요.</p>
+      <div class="upload-area" style="padding:18px" onclick="document.getElementById('nameFileInput').click()">
+        <p>📄 <strong>명단 파일 업로드 (.txt)</strong></p>
+      </div>
+      <input type="file" id="nameFileInput" accept=".txt" style="display:none" onchange="loadNameFile(event)">
+    </div>
+
+    <div class="panel">
+      <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="clearAllNames()">🗑 전체 명단 삭제</button>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ===== API KEY MODAL ===== -->
+<div class="modal-overlay" id="apiModal">
+  <div class="modal">
+    <h2>🔑 Google Gemini API 키 설정</h2>
+    <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#92400e;line-height:1.7">
+      ⚠️ <b>반드시 AI Studio에서 키를 발급</b>받아야 무료/저렴한 요금이 적용됩니다.<br>
+      Google Cloud Console 키는 무료 티어가 없습니다.
+    </div>
+    <p style="font-size:13px;line-height:1.8;color:#374151">
+      ① <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary);font-weight:700">aistudio.google.com/apikey</a> 접속<br>
+      ② Google 계정 로그인 후 <b>Create API Key</b> 클릭<br>
+      ③ 키 복사 후 아래에 붙여넣기<br>
+      <span style="color:var(--gray-400)">키는 이 기기의 브라우저에만 저장됩니다.</span>
+    </p>
+    <div class="modal-row" style="display:block;margin-top:8px">
+      <label>API Key</label>
+      <input type="password" id="apiKeyInput" placeholder="AIzaSy..." style="width:100%">
+    </div>
+    <div class="modal-row" style="display:block;margin-top:8px">
+      <label>모델 선택</label>
+      <select id="modelSelect" style="width:100%">
+        <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (최신 · 권장)</option>
+        <option value="gemini-2.0-flash">Gemini 2.0 Flash (안정적)</option>
+        <option value="gemini-2.5-pro">Gemini 2.5 Pro (고정확도)</option>
+        <option value="gemini-1.5-flash">Gemini 1.5 Flash (구버전)</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary" onclick="saveApiKey()">저장</button>
+      <button class="btn btn-outline" onclick="closeApiModal()">취소</button>
+      <button class="btn btn-outline btn-sm" style="margin-left:auto;color:var(--danger)" onclick="clearApiKey()">키 삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
+let feedbackData = [];   // [{id,resident,dept,text,done,priority,corrected}]
+let residentNames = [];
+let currentFilter = 'all';
+let apiKey = '';
+let modelId = 'gemini-2.5-flash';
+
+// ═══════════════════════════════════════════
+// PERSISTENCE
+// ═══════════════════════════════════════════
+function save() {
+  localStorage.setItem('sedona_fb', JSON.stringify(feedbackData));
+  localStorage.setItem('sedona_rn', JSON.stringify(residentNames));
+  localStorage.setItem('sedona_summary', document.getElementById('summaryText').textContent || '');
+}
+function load() {
+  try {
+    const fb = localStorage.getItem('sedona_fb');
+    const rn = localStorage.getItem('sedona_rn');
+    const sm = localStorage.getItem('sedona_summary');
+    if (fb) feedbackData = JSON.parse(fb);
+    if (rn) residentNames = JSON.parse(rn);
+    if (sm) document.getElementById('summaryText').textContent = sm;
+    apiKey = localStorage.getItem('sedona_api') || '';
+    modelId = localStorage.getItem('sedona_model') || 'gemini-2.5-flash';
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════
+// API KEY MODAL
+// ═══════════════════════════════════════════
+function openApiModal() {
+  document.getElementById('apiKeyInput').value = apiKey;
+  document.getElementById('modelSelect').value = modelId;
+  document.getElementById('apiModal').classList.add('open');
+}
+function closeApiModal() { document.getElementById('apiModal').classList.remove('open'); }
+function saveApiKey() {
+  apiKey = document.getElementById('apiKeyInput').value.trim();
+  modelId = document.getElementById('modelSelect').value;
+  localStorage.setItem('sedona_api', apiKey);
+  localStorage.setItem('sedona_model', modelId);
+  closeApiModal();
+  updateApiStatus();
+  showToast('API 키가 저장되었습니다.', 'success');
+}
+function clearApiKey() {
+  if (!confirm('저장된 API 키를 삭제하시겠습니까?')) return;
+  apiKey = '';
+  localStorage.removeItem('sedona_api');
+  closeApiModal();
+  updateApiStatus();
+  showToast('API 키가 삭제되었습니다.');
+}
+function updateApiStatus() {
+  const dot = document.getElementById('apiDot');
+  const lbl = document.getElementById('apiStatusLabel');
+  if (apiKey) {
+    dot.classList.add('ok');
+    lbl.textContent = 'AI 연결됨';
+  } else {
+    dot.classList.remove('ok');
+    lbl.textContent = 'API 키 설정';
+  }
+}
+
+// ═══════════════════════════════════════════
+// AI ANALYSIS (Claude API)
+// ═══════════════════════════════════════════
+async function runAiAnalysis() {
+  const text = document.getElementById('meetingText').value.trim();
+  if (!text) { showToast('회의록 내용을 먼저 입력해주세요.', 'error'); return; }
+  if (!apiKey) { openApiModal(); showToast('API 키를 먼저 설정해주세요.', 'error'); return; }
+
+  const btn = document.getElementById('aiBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> 분석 중...';
+
+  const chatPanel = document.getElementById('chatPanel');
+  const chatContainer = document.getElementById('chatContainer');
+  chatPanel.style.display = 'block';
+  chatContainer.innerHTML = '';
+
+  // User bubble
+  appendChatBubble('user', `회의록을 분석해서 간호팀과 복지팀 피드백을 정리해주세요.`);
+
+  // AI typing indicator
+  const typingId = appendTyping();
+
+  // 입력 텍스트 길이 제한 (10000자)
+  const MAX_CHARS = 10000;
+  const inputText = text.length > MAX_CHARS ? text.slice(0, MAX_CHARS) + '\n...(이하 생략)' : text;
+  if (text.length > MAX_CHARS) showToast(`회의록이 길어 앞 ${MAX_CHARS}자만 분석합니다.`, '');
+
+  const namesCtx = residentNames.length > 0
+    ? `\n\n등록된 어르신 명단: ${residentNames.join(', ')}\n음성인식 오류로 비슷하게 잘못된 이름은 위 명단으로 교정하고 corrected:true 표시.`
+    : '';
+
+  const systemPrompt = `당신은 노인요양원 케어 회의록을 분석하는 AI입니다. 아래 JSON 형식으로만 응답하세요. JSON 외 텍스트는 절대 출력하지 마세요.
+
+{"meeting_date":"날짜(없으면 null)","summary":"회의 전체 2~3문장 요약","key_issues":["주요사항1","주요사항2"],"feedbacks":[{"resident":"어르신성명","original_name":"원문이름","corrected":false,"dept":"nursing 또는 welfare 또는 both","text":"피드백 내용","priority":"high 또는 normal"}]}
+
+규칙: dept nursing=간호/의료/투약/처방/상처/혈압/혈당, welfare=복지/생활/가족/프로그램/상담/외출, both=둘다. priority high=낙상/욕창/응급/즉시처리필요. 한 어르신 업무 여러개면 feedbacks 항목 분리.${namesCtx}`;
+
+  try {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
+    const response = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: `다음 회의록을 분석해주세요:\n\n${inputText}` }] }],
+        generationConfig: { maxOutputTokens: 8192, temperature: 0.1 }
+      })
+    });
+
+    removeTyping(typingId);
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      let errMsg = `HTTP ${response.status}`;
+      try {
+        const j = JSON.parse(errText);
+        errMsg = j.error?.message || errText;
+        // AI Studio 키 안내
+        if (response.status === 400 || (j.error?.status === 'PERMISSION_DENIED') || errMsg.includes('quota') || errMsg.includes('limit: 0')) {
+          errMsg += '\n\n⚠️ 해결방법: API 키를 Google Cloud Console이 아닌\n[aistudio.google.com/apikey] 에서 다시 발급받으세요.';
+        }
+      } catch(e) { errMsg = errText || errMsg; }
+      appendChatBubble('ai', `❌ API 오류 (${response.status}):\n${errMsg}`);
+      btn.disabled = false;
+      btn.innerHTML = '🤖 AI 에이전트 분석';
+      return;
+    }
+
+    const data = await response.json();
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    if (!raw) {
+      appendChatBubble('ai', `❌ 응답이 비어있습니다. 다시 시도해주세요.`);
+      btn.disabled = false;
+      btn.innerHTML = '🤖 AI 에이전트 분석';
+      return;
+    }
+
+    // Parse JSON from response (마크다운 코드블록 제거 후 파싱)
+    let parsed = null;
+    try {
+      // ```json ... ``` 또는 ``` ... ``` 제거
+      let cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      // 가장 바깥쪽 { } 추출
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      if (start !== -1 && end !== -1) cleaned = cleaned.slice(start, end + 1);
+      parsed = JSON.parse(cleaned);
+    } catch(e) {
+      appendChatBubble('ai', `❌ AI 응답 파싱 오류.\n\n원본 응답:\n${raw.slice(0, 500)}`);
+      btn.disabled = false;
+      btn.innerHTML = '🤖 AI 에이전트 분석';
+      return;
+    }
+
+    if (!parsed || !parsed.feedbacks || !Array.isArray(parsed.feedbacks)) {
+      appendChatBubble('ai', `❌ 분석 결과 형식 오류.\n\nAI 응답:\n${raw.slice(0, 500)}`);
+      btn.disabled = false;
+      btn.innerHTML = '🤖 AI 에이전트 분석';
+      return;
+    }
+
+    // Build feedback data
+    const existingMap = {};
+    feedbackData.forEach(it => { existingMap[it.resident + '|' + it.text] = it.done; });
+
+    feedbackData = parsed.feedbacks.map(f => ({
+      id: Math.random().toString(36).slice(2),
+      resident: f.resident,
+      dept: f.dept || 'nursing',
+      text: f.text,
+      priority: f.priority || 'normal',
+      corrected: !!f.corrected,
+      originalName: f.original_name || f.resident,
+      done: existingMap[f.resident + '|' + f.text] ?? false
+    }));
+
+    // Summary
+    const summaryLines = [];
+    if (parsed.meeting_date) summaryLines.push(`📅 회의 일자: ${parsed.meeting_date}`);
+    summaryLines.push('');
+    summaryLines.push('📋 회의 요약');
+    summaryLines.push('─'.repeat(38));
+    summaryLines.push(parsed.summary || '');
+    if (parsed.key_issues?.length) {
+      summaryLines.push('');
+      summaryLines.push('📌 주요 논의사항');
+      summaryLines.push('─'.repeat(38));
+      parsed.key_issues.forEach((k, i) => summaryLines.push(`${i+1}. ${k}`));
+    }
+    summaryLines.push('');
+    summaryLines.push(`💊 간호팀 업무: ${feedbackData.filter(f=>f.dept==='nursing'||f.dept==='both').length}건`);
+    summaryLines.push(`🤝 복지팀 업무: ${feedbackData.filter(f=>f.dept==='welfare'||f.dept==='both').length}건`);
+    summaryLines.push(`⚠️ 즉시 처리 필요: ${feedbackData.filter(f=>f.priority==='high').length}건`);
+
+    document.getElementById('summaryText').textContent = summaryLines.join('\n');
+
+    // AI chat reply
+    const residents = [...new Set(feedbackData.map(f => f.resident))];
+    const highPri = feedbackData.filter(f => f.priority === 'high');
+    let replyMsg = `✅ 분석 완료! 총 **${feedbackData.length}건**의 피드백을 추출했습니다.\n\n`;
+    replyMsg += `👥 관련 어르신: ${residents.join(', ')} (${residents.length}명)\n`;
+    replyMsg += `💉 간호팀 업무: ${feedbackData.filter(f=>f.dept==='nursing').length}건\n`;
+    replyMsg += `🤝 복지팀 업무: ${feedbackData.filter(f=>f.dept==='welfare').length}건\n`;
+    if (highPri.length > 0) {
+      replyMsg += `\n⚠️ 즉시 처리 필요 항목 (${highPri.length}건):\n`;
+      highPri.forEach(f => { replyMsg += `  • ${f.resident} 어르신 — ${f.text}\n`; });
+    }
+    const corrected = feedbackData.filter(f => f.corrected);
+    if (corrected.length > 0) {
+      replyMsg += `\n🔄 이름 교정됨: ${[...new Set(corrected.map(f=>`${f.originalName}→${f.resident}`))].join(', ')}`;
+    }
+    appendChatBubble('ai', replyMsg);
+
+    save();
+    switchTab('feedback');
+    renderFeedback();
+    showToast(`${feedbackData.length}건 분석 완료`, 'success');
+
+  } catch(e) {
+    removeTyping(typingId);
+    appendChatBubble('ai', `❌ 네트워크 오류: ${e.message}\n\nCORS 설정이나 네트워크 연결을 확인해주세요.`);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '🤖 AI 에이전트 분석';
+}
+
+function appendChatBubble(role, text) {
+  const container = document.getElementById('chatContainer');
+  const isAi = role === 'ai';
+  const div = document.createElement('div');
+  div.className = `chat-msg ${role}`;
+  div.innerHTML = `
+    <div class="avatar ${role}">${isAi ? '🤖' : '👤'}</div>
+    <div class="bubble ${role}"><pre>${escHtml(text)}</pre></div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+function appendTyping() {
+  const container = document.getElementById('chatContainer');
+  const id = 'typing-' + Date.now();
+  const div = document.createElement('div');
+  div.className = 'chat-msg ai';
+  div.id = id;
+  div.innerHTML = `<div class="avatar ai">🤖</div>
+    <div class="bubble ai"><span class="typing-dots"><span>●</span><span>●</span><span>●</span></span> 분석 중...</div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return id;
+}
+
+function removeTyping(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+// ═══════════════════════════════════════════
+// RENDER FEEDBACK
+// ═══════════════════════════════════════════
+function renderFeedback() {
+  const has = feedbackData.length > 0;
+  document.getElementById('feedbackEmpty').style.display = has ? 'none' : 'block';
+  document.getElementById('feedbackContent').style.display = has ? 'block' : 'none';
+  if (!has) { updateBadge(); return; }
+
+  const total = feedbackData.length;
+  const nurs = feedbackData.filter(f => f.dept==='nursing').length;
+  const welf = feedbackData.filter(f => f.dept==='welfare').length;
+  const done = feedbackData.filter(f => f.done).length;
+  const pend = total - done;
+
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="summary-card total"><div class="num">${total}</div><div class="label">전체 항목</div></div>
+    <div class="summary-card nursing"><div class="num" style="color:var(--nursing)">${nurs}</div><div class="label">💉 간호팀</div></div>
+    <div class="summary-card welfare"><div class="num" style="color:var(--welfare)">${welf}</div><div class="label">🤝 복지팀</div></div>
+    <div class="summary-card done"><div class="num" style="color:var(--success)">${done}</div><div class="label">✅ 처리완료</div></div>
+    <div class="summary-card pend"><div class="num" style="color:var(--warning)">${pend}</div><div class="label">⏳ 미처리</div></div>`;
+
+  const pct = total > 0 ? Math.round(done/total*100) : 0;
+  document.getElementById('progressText').textContent = `${done} / ${total} (${pct}%)`;
+  document.getElementById('progressFill').style.width = pct + '%';
+
+  // Resident dropdown
+  const residents = [...new Set(feedbackData.map(f => f.resident))].sort();
+  const sel = document.getElementById('residentFilter');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">전체 어르신</option>' +
+    residents.map(r => `<option value="${r}" ${r===prev?'selected':''}>${r} 어르신</option>`).join('');
+
+  // Filter
+  let filtered = feedbackData;
+  if (currentFilter === 'nursing') filtered = filtered.filter(f => f.dept==='nursing');
+  else if (currentFilter === 'welfare') filtered = filtered.filter(f => f.dept==='welfare');
+  else if (currentFilter === 'pending') filtered = filtered.filter(f => !f.done);
+  else if (currentFilter === 'done') filtered = filtered.filter(f => f.done);
+  if (sel.value) filtered = filtered.filter(f => f.resident===sel.value);
+
+  // Group by resident
+  const grouped = {};
+  filtered.forEach(f => { (grouped[f.resident] = grouped[f.resident]||[]).push(f); });
+
+  const list = document.getElementById('feedbackList');
+  if (!Object.keys(grouped).length) {
+    list.innerHTML = '<div class="empty-state"><div class="ei">🎉</div><p>해당 조건의 항목이 없습니다.</p></div>';
+    updateBadge(); return;
+  }
+
+  list.innerHTML = Object.entries(grouped).map(([res, items]) => {
+    const pendCount = items.filter(f => !f.done).length;
+    const hasCorrected = items.some(f => f.corrected);
+    return `<div class="resident-section">
+      <div class="resident-header" onclick="toggleSection(this)">
+        <span style="font-size:20px">👤</span>
+        <span class="resident-name">${res} 어르신</span>
+        <span class="resident-count ${pendCount>0?'has-pending':''}">${pendCount>0?`미처리 ${pendCount}건`:`${items.length}건 완료`}</span>
+        ${hasCorrected?`<span class="corrected-badge">🔄 이름 교정</span>`:''}
+        <span class="collapse-arrow open">▲</span>
+      </div>
+      <div class="resident-body">
+        ${items.map(renderItem).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  updateBadge();
+}
+
+function renderItem(f) {
+  const deptLabel = f.dept==='nursing'?'💉 간호':f.dept==='welfare'?'🤝 복지':'📌 공통';
+  const deptClass = f.dept==='nursing'?'nursing':f.dept==='welfare'?'welfare':'both';
+  return `<div class="feedback-item ${f.done?'done-item':''}" id="item-${f.id}">
+    <span class="dept-badge ${deptClass}">${deptLabel}</span>
+    ${f.priority==='high'?`<span class="priority-badge">⚠️ 즉시</span>`:''}
+    <span class="feedback-text">${escHtml(f.text)}</span>
+    <div class="status-toggle ${f.done?'done':'pending'}" onclick="toggleDone('${f.id}')">
+      <div class="toggle-circle">${f.done?'✓':''}</div>
+      <span class="status-label ${f.done?'done':'pending'}">${f.done?'완료':'미처리'}</span>
+    </div>
+  </div>`;
+}
+
+function toggleSection(hdr) {
+  const body = hdr.nextElementSibling;
+  const arrow = hdr.querySelector('.collapse-arrow');
+  const isOpen = arrow.classList.contains('open');
+  body.style.display = isOpen ? 'none' : 'block';
+  arrow.classList.toggle('open', !isOpen);
+}
+
+function toggleDone(id) {
+  const f = feedbackData.find(i => i.id===id);
+  if (!f) return;
+  f.done = !f.done;
+  save();
+  renderFeedback();
+}
+
+function setFilter(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderFeedback();
+}
+
+function updateBadge() {
+  const pend = feedbackData.filter(f => !f.done).length;
+  const badge = document.getElementById('pendingBadge');
+  badge.style.display = pend > 0 ? 'inline-block' : 'none';
+  badge.textContent = pend;
+}
+
+function markAllDone() {
+  if (!confirm('모든 항목을 처리완료로 표시하시겠습니까?')) return;
+  feedbackData.forEach(f => f.done=true);
+  save(); renderFeedback();
+  showToast('전체 처리완료 표시', 'success');
+}
+
+function resetAllStatus() {
+  if (!confirm('모든 처리 상태를 초기화하시겠습니까?')) return;
+  feedbackData.forEach(f => f.done=false);
+  save(); renderFeedback();
+  showToast('처리 상태 초기화됨');
+}
+
+function exportReport() {
+  const pend = feedbackData.filter(f => !f.done);
+  if (!pend.length) { showToast('미처리 항목이 없습니다.', 'success'); return; }
+  const grouped = {};
+  pend.forEach(f => (grouped[f.resident]=grouped[f.resident]||[]).push(f));
+  let txt = `세도나 시니어타운 미처리 피드백 목록\n생성: ${new Date().toLocaleString('ko-KR')}\n${'='.repeat(48)}\n\n`;
+  Object.entries(grouped).forEach(([res, items]) => {
+    txt += `▸ ${res} 어르신\n`;
+    items.forEach(f => {
+      const d = f.dept==='nursing'?'[간호]':f.dept==='welfare'?'[복지]':'[공통]';
+      const p = f.priority==='high'?'⚠️ ':'';
+      txt += `  ${d} □ ${p}${f.text}\n`;
+    });
+    txt += '\n';
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([txt], {type:'text/plain;charset=utf-8'}));
+  a.download = `미처리_피드백_${new Date().toLocaleDateString('ko-KR').replace(/\. /g,'').replace('.','')}.txt`;
+  a.click();
+  showToast('파일 내보내기 완료', 'success');
+}
+
+// ═══════════════════════════════════════════
+// RESIDENT NAMES
+// ═══════════════════════════════════════════
+function renderNameGrid() {
+  document.getElementById('residentCount').textContent = `(${residentNames.length}명)`;
+  const grid = document.getElementById('nameGrid');
+  grid.innerHTML = residentNames.length
+    ? residentNames.map((n,i)=>`<div class="name-chip"><span>${n}</span><span class="del-btn" onclick="removeName(${i})">×</span></div>`).join('')
+    : '<div style="color:var(--gray-400);font-size:13px;padding:8px">등록된 어르신이 없습니다.</div>';
+}
+function addName() {
+  const inp = document.getElementById('newNameInput');
+  const n = inp.value.trim();
+  if (!n) return;
+  if (residentNames.includes(n)) { showToast('이미 등록된 이름입니다.','error'); return; }
+  residentNames.push(n); save(); renderNameGrid(); inp.value='';
+  showToast(`${n} 어르신 추가됨`);
+}
+function addBulkNames() {
+  const raw = document.getElementById('bulkNameInput').value;
+  const names = raw.split('\n').map(n=>n.trim()).filter(Boolean);
+  let added=0;
+  names.forEach(n=>{ if(!residentNames.includes(n)){residentNames.push(n);added++;} });
+  save(); renderNameGrid(); document.getElementById('bulkNameInput').value='';
+  showToast(`${added}명 추가됨`);
+}
+function removeName(i) {
+  const n = residentNames[i];
+  if (!confirm(`"${n}" 어르신을 삭제하시겠습니까?`)) return;
+  residentNames.splice(i,1); save(); renderNameGrid();
+  showToast(`${n} 어르신 삭제됨`);
+}
+function clearAllNames() {
+  if (!confirm('모든 어르신 명단을 삭제하시겠습니까?')) return;
+  residentNames=[]; save(); renderNameGrid();
+  showToast('명단 초기화됨');
+}
+function loadNameFile(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    const names = ev.target.result.split('\n').map(n=>n.trim().replace(/\r/g,'')).filter(Boolean);
+    let added=0;
+    names.forEach(n=>{ if(!residentNames.includes(n)){residentNames.push(n);added++;} });
+    save(); renderNameGrid();
+    showToast(`${added}명 추가됨`, 'success');
+  };
+  r.readAsText(file,'UTF-8');
+  e.target.value='';
+}
+
+// ═══════════════════════════════════════════
+// FILE LOAD
+// ═══════════════════════════════════════════
+function loadFile(e) {
+  const file = e.target.files[0]; if (!file) return;
+  document.getElementById('fileNameLabel').textContent = `📄 ${file.name}`;
+  const r = new FileReader();
+  r.onload = ev => {
+    let text = ev.target.result;
+    if (text.includes('�')) {
+      const r2 = new FileReader();
+      r2.onload = ev2 => { document.getElementById('meetingText').value = ev2.target.result; };
+      r2.readAsText(file,'EUC-KR');
+    } else {
+      document.getElementById('meetingText').value = text;
+    }
+    showToast(`${file.name} 로드됨`);
+  };
+  r.readAsText(file,'UTF-8');
+  e.target.value='';
+}
+function handleDragOver(e){ e.preventDefault(); document.getElementById('uploadArea').classList.add('drag-over'); }
+function handleDragLeave(){ document.getElementById('uploadArea').classList.remove('drag-over'); }
+function handleDrop(e){
+  e.preventDefault(); document.getElementById('uploadArea').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file?.name.endsWith('.txt')) {
+    const r = new FileReader();
+    r.onload = ev => { document.getElementById('meetingText').value = ev.target.result; showToast(`${file.name} 로드됨`); };
+    r.readAsText(file,'UTF-8');
+  } else showToast('.txt 파일만 지원합니다.','error');
+}
+function clearInput() {
+  document.getElementById('meetingText').value='';
+  document.getElementById('fileNameLabel').textContent='';
+  document.getElementById('chatPanel').style.display='none';
+  document.getElementById('chatContainer').innerHTML='';
+}
+
+// ═══════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  const idx = {upload:0,feedback:1,residents:2};
+  document.querySelectorAll('.nav-tab')[idx[name]].classList.add('active');
+  if (name==='feedback') renderFeedback();
+}
+
+// ═══════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════
+function escHtml(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' '+type : '');
+  clearTimeout(t._t);
+  t._t = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+window.onload = () => {
+  load();
+  renderNameGrid();
+  updateApiStatus();
+  if (feedbackData.length > 0) { renderFeedback(); }
+  updateBadge();
+};
+</script>
+</body>
+</html>
