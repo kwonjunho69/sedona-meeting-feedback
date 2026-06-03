@@ -1068,6 +1068,415 @@ function exportTeam(team) {
 // ══════════════════════════
 // RENDER: 어르신별 조회 탭
 // ══════════════════════════
+let resviewFilt = 'all';
+
+function setResviewFilt(val, btn) {
+  resviewFilt = val;
+  btn.closest('.fbar').querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderResview();
+}
+
+function renderResview() {
+  const resMap = {};
+  meetings.forEach(m => {
+    const residents = [...new Set(m.feedbacks.map(f=>f.resident))];
+    residents.forEach(res => {
+      if (!resMap[res]) resMap[res] = [];
+      resMap[res].push({ meeting: m, fbs: m.feedbacks.filter(f=>f.resident===res) });
+    });
+  });
+  const allRes = Object.keys(resMap).sort();
+  const has = allRes.length > 0;
+  document.getElementById('resviewEmpty').style.display = has ? 'none' : 'block';
+  document.getElementById('resviewContent').style.display = has ? 'block' : 'none';
+  if (!has) return;
+
+  const resStats = allRes.map(res => {
+    const entries = resMap[res];
+    let totalGroups = 0, doneGroups = 0;
+    entries.forEach(({meeting, fbs}) => {
+      const hasNurs = fbs.some(f=>f.dept==='nursing'||f.dept==='both');
+      const hasWelf = fbs.some(f=>f.dept==='welfare'||f.dept==='both');
+      if (hasNurs) { totalGroups++; if (isGroupDone(meeting,res,'nursing')) doneGroups++; }
+      if (hasWelf) { totalGroups++; if (isGroupDone(meeting,res,'welfare')) doneGroups++; }
+    });
+    return { res, totalGroups, doneGroups, pendGroups: totalGroups-doneGroups };
+  });
+
+  const totalRes=resStats.length, fullDoneRes=resStats.filter(s=>s.pendGroups===0).length;
+  const pendRes=totalRes-fullDoneRes;
+  const totalGroups=resStats.reduce((a,s)=>a+s.totalGroups,0);
+  const doneGroups=resStats.reduce((a,s)=>a+s.doneGroups,0);
+
+  document.getElementById('resviewSumCards').innerHTML=`
+    <div class="sum-card t"><div class="num">${totalRes}</div><div class="lbl">👥 전체 어르신</div></div>
+    <div class="sum-card p"><div class="num" style="color:var(--warning)">${pendRes}</div><div class="lbl">⏳ 미처리 있음</div></div>
+    <div class="sum-card d"><div class="num" style="color:var(--success)">${fullDoneRes}</div><div class="lbl">✅ 전체 처리완료</div></div>
+    <div class="sum-card t"><div class="num">${doneGroups}/${totalGroups}</div><div class="lbl">처리건 / 전체</div></div>`;
+
+  const search=(document.getElementById('resviewSearch').value||'').trim();
+  let filtered=resStats;
+  if (search) filtered=filtered.filter(s=>s.res.includes(search));
+  if (resviewFilt==='pending') filtered=filtered.filter(s=>s.pendGroups>0);
+  else if (resviewFilt==='done') filtered=filtered.filter(s=>s.pendGroups===0);
+
+  const list=document.getElementById('resviewList');
+  if (!filtered.length) {
+    list.innerHTML='<div class="empty" style="padding:24px"><div class="ei" style="font-size:32px">🔍</div><p>해당하는 어르신이 없습니다.</p></div>';
+    return;
+  }
+
+  list.innerHTML=filtered.map(({res,totalGroups,doneGroups,pendGroups})=>{
+    const entries=resMap[res];
+    const bodyId='rv-'+btoa(encodeURIComponent(res)).slice(0,12);
+    const allCorrected=entries.some(e=>e.fbs.some(f=>f.corrected));
+    const datesHtml=entries.map(({meeting,fbs})=>{
+      const nursFbs=fbs.filter(f=>f.dept==='nursing'||f.dept==='both');
+      const welfFbs=fbs.filter(f=>f.dept==='welfare'||f.dept==='both');
+      const nDone=isGroupDone(meeting,res,'nursing'), wDone=isGroupDone(meeting,res,'welfare');
+      const nNote=getGroupNote(meeting,res,'nursing'), wNote=getGroupNote(meeting,res,'welfare');
+      let inner='';
+      if (nursFbs.length) {
+        inner+=`<div style="margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span style="font-size:12px;font-weight:700;color:var(--nursing);background:var(--nursing-light);padding:2px 8px;border-radius:10px">💉 간호팀</span>
+            <div class="done-toggle ${nDone?'done':'pending'}" style="font-size:11px;padding:3px 8px"
+                 onclick="toggleGroup('${meeting.id}','${encodeURIComponent(res)}','nursing')">
+              <div class="chk">${nDone?'✓':''}</div>${nDone?'처리완료':'미처리'}</div>
+          </div>
+          ${nursFbs.map(f=>`<div class="team-date-item" style="padding-left:8px">
+            ${f.priority==='high'?`<span class="pri-badge" style="margin-top:0;flex-shrink:0">⚠️</span>`:''}
+            <span>${esc(f.text)}</span></div>`).join('')}
+          ${nNote?`<div class="note-box" style="margin:6px 8px 0">
+            <div class="note-lbl">✅ 처리내용 <span class="note-date">${nNote.resolvedAt}</span></div>
+            ${nNote.note?esc(nNote.note):'<span style="color:var(--g400)">내용 없음</span>'}</div>`:''}
+        </div>`;
+      }
+      if (welfFbs.length) {
+        inner+=`<div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span style="font-size:12px;font-weight:700;color:var(--welfare);background:var(--welfare-light);padding:2px 8px;border-radius:10px">🤝 복지팀</span>
+            <div class="done-toggle ${wDone?'done':'pending'}" style="font-size:11px;padding:3px 8px"
+                 onclick="toggleGroup('${meeting.id}','${encodeURIComponent(res)}','welfare')">
+              <div class="chk">${wDone?'✓':''}</div>${wDone?'처리완료':'미처리'}</div>
+          </div>
+          ${welfFbs.map(f=>`<div class="team-date-item" style="padding-left:8px">
+            ${f.priority==='high'?`<span class="pri-badge" style="margin-top:0;flex-shrink:0">⚠️</span>`:''}
+            <span>${esc(f.text)}</span></div>`).join('')}
+          ${wNote?`<div class="note-box" style="margin:6px 8px 0">
+            <div class="note-lbl">✅ 처리내용 <span class="note-date">${wNote.resolvedAt}</span></div>
+            ${wNote.note?esc(wNote.note):'<span style="color:var(--g400)">내용 없음</span>'}</div>`:''}
+        </div>`;
+      }
+      return `<div class="team-date-row" style="align-items:flex-start">
+        <span class="team-date-tag" style="margin-top:3px">${meeting.date}</span>
+        <div style="flex:1">${inner}</div>
+      </div>`;
+    }).join('');
+    return `<div class="team-res-card">
+      <div class="team-res-head" onclick="toggleTeamRes('${bodyId}')">
+        <span style="font-size:18px">👤</span>
+        <span class="team-res-name">${esc(res)} 어르신</span>
+        ${allCorrected?`<span class="corrected-badge">🔄 이름교정</span>`:''}
+        <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+          ${pendGroups>0
+            ?`<span style="font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;background:var(--danger-light);color:var(--danger)">미처리 ${pendGroups}건</span>`
+            :`<span style="font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;background:var(--success-light);color:var(--success)">✅ 완료</span>`}
+          <span style="font-size:12px;color:var(--g500)">${entries.length}회 기록</span>
+        </div>
+        <span class="collapse-arrow open" id="arr-${bodyId}" style="margin-left:8px">▲</span>
+      </div>
+      <div class="team-res-body open" id="${bodyId}">${datesHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── 통계 헬퍼 ──
+function getAllGroups() {
+  const result=[];
+  meetings.forEach(m=>result.push(...getMeetingGroups(m)));
+  return result;
+}
+function getMeetingGroups(m) {
+  const groups=[];
+  const residents=[...new Set(m.feedbacks.map(f=>f.resident))];
+  residents.forEach(res=>{
+    const fbs=m.feedbacks.filter(f=>f.resident===res);
+    const hasNurs=fbs.some(f=>f.dept==='nursing'||f.dept==='both');
+    const hasWelf=fbs.some(f=>f.dept==='welfare'||f.dept==='both');
+    if (hasNurs) groups.push({resident:res,team:'nursing',done:isGroupDone(m,res,'nursing')});
+    if (hasWelf) groups.push({resident:res,team:'welfare',done:isGroupDone(m,res,'welfare')});
+  });
+  return groups;
+}
+
+function updateAllBadges() {
+  const nursPend=meetings.reduce((acc,m)=>{
+    const r=[...new Set(m.feedbacks.filter(f=>f.dept==='nursing'||f.dept==='both').map(f=>f.resident))];
+    return acc+r.filter(res=>!isGroupDone(m,res,'nursing')).length;
+  },0);
+  const welfPend=meetings.reduce((acc,m)=>{
+    const r=[...new Set(m.feedbacks.filter(f=>f.dept==='welfare'||f.dept==='both').map(f=>f.resident))];
+    return acc+r.filter(res=>!isGroupDone(m,res,'welfare')).length;
+  },0);
+  const nb=document.getElementById('nursingBadge'), wb=document.getElementById('welfareBadge');
+  nb.style.display=nursPend>0?'inline-block':'none'; nb.textContent=nursPend;
+  wb.style.display=welfPend>0?'inline-block':'none'; wb.textContent=welfPend;
+  const totalPend=nursPend+welfPend;
+  const rvb=document.getElementById('resviewBadge');
+  rvb.style.display=totalPend>0?'inline-block':'none'; rvb.textContent=totalPend;
+}
+
+function renderAll() {
+  renderDates(); renderTeam('nursing'); renderTeam('welfare'); renderResview(); updateAllBadges();
+}
+
+// ── TABS ──
+function switchTab(name) {
+  document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  const idx={input:0,dates:1,nursing:2,welfare:3,resview:4,residents:5};
+  document.querySelectorAll('.ntab')[idx[name]].classList.add('active');
+  if(name==='dates') renderDates();
+  else if(name==='nursing') renderTeam('nursing');
+  else if(name==='welfare') renderTeam('welfare');
+  else if(name==='resview') renderResview();
+}
+
+// ── NAMES ──
+function renderNames() {
+  document.getElementById('resCount').textContent=`(${residentNames.length}명)`;
+  const g=document.getElementById('nameGrid');
+  g.innerHTML=residentNames.length
+    ?residentNames.map((n,i)=>`<div class="name-chip"><span>${n}</span><span class="del-btn" onclick="delName(${i})">×</span></div>`).join('')
+    :'<div style="color:var(--g400);font-size:12px;padding:6px">등록된 어르신이 없습니다.</div>';
+}
+function addName(){
+  const inp=document.getElementById('newName'),n=inp.value.trim();
+  if(!n) return;
+  if(residentNames.includes(n)){showToast('이미 등록됨','err');return;}
+  residentNames.push(n);save();renderNames();inp.value='';showToast(`${n} 추가됨`);
+}
+function addBulk(){
+  const raw=document.getElementById('bulkNames').value;
+  const names=raw.split('\n').map(n=>n.trim()).filter(Boolean);
+  let added=0;names.forEach(n=>{if(!residentNames.includes(n)){residentNames.push(n);added++;}});
+  save();renderNames();document.getElementById('bulkNames').value='';showToast(`${added}명 추가됨`);
+}
+function delName(i){
+  const n=residentNames[i];if(!confirm(`"${n}" 삭제?`))return;
+  residentNames.splice(i,1);save();renderNames();showToast(`${n} 삭제됨`);
+}
+function clearNames(){
+  if(!confirm('전체 삭제?'))return;residentNames=[];save();renderNames();showToast('초기화됨');
+}
+function loadNameFile(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    const names=ev.target.result.split('\n').map(n=>n.trim().replace(/\r/g,'')).filter(Boolean);
+    let added=0;names.forEach(n=>{if(!residentNames.includes(n)){residentNames.push(n);added++;}});
+    save();renderNames();showToast(`${added}명 추가됨`,'ok');
+  };
+  r.readAsText(f,'UTF-8');e.target.value='';
+}
+
+// ── FILE ──
+function loadFile(e){
+  const f=e.target.files[0];if(!f)return;
+  document.getElementById('fileLabel').textContent=`📄 ${f.name}`;
+  const r=new FileReader();
+  r.onload=ev=>{
+    const t=ev.target.result;
+    if(t.includes('?')){const r2=new FileReader();r2.onload=ev2=>{document.getElementById('meetingText').value=ev2.target.result;};r2.readAsText(f,'EUC-KR');}
+    else document.getElementById('meetingText').value=t;
+    showToast(`${f.name} 로드됨`);
+  };
+  r.readAsText(f,'UTF-8');e.target.value='';
+}
+function dragOver(e){e.preventDefault();document.getElementById('uploadZone').classList.add('drag')}
+function dragLeave(){document.getElementById('uploadZone').classList.remove('drag')}
+function dropFile(e){
+  e.preventDefault();dragLeave();
+  const f=e.dataTransfer.files[0];
+  if(f?.name.endsWith('.txt')){const r=new FileReader();r.onload=ev=>{document.getElementById('meetingText').value=ev.target.result;showToast(`${f.name} 로드됨`);};r.readAsText(f,'UTF-8');}
+  else showToast('.txt 파일만 지원','err');
+}
+function clearInput(){
+  document.getElementById('meetingText').value='';
+  document.getElementById('fileLabel').textContent='';
+  document.getElementById('chatPanel').style.display='none';
+  document.getElementById('chatWrap').innerHTML='';
+}
+
+// ── CHAT ──
+function appendBubble(role,text){
+  const c=document.getElementById('chatWrap');
+  const d=document.createElement('div');d.className=`cmsg ${role}`;
+  d.innerHTML=`<div class="cavatar ${role}">${role==='ai'?'🤖':'👤'}</div><div class="cbubble ${role}"><pre>${esc(text)}</pre></div>`;
+  c.appendChild(d);c.scrollTop=c.scrollHeight;return d;
+}
+function appendTyping(){
+  const c=document.getElementById('chatWrap'),id='typ-'+Date.now();
+  const d=document.createElement('div');d.className='cmsg ai';d.id=id;
+  d.innerHTML=`<div class="cavatar ai">🤖</div><div class="cbubble ai"><span class="typing"><span>●</span><span>●</span><span>●</span></span> 분석 중...</div>`;
+  c.appendChild(d);c.scrollTop=c.scrollHeight;return id;
+}
+function removeTyping(id){const e=document.getElementById(id);if(e)e.remove();}
+
+// ── UTILS ──
+function esc(t){return(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function rand(){return Math.random().toString(36).slice(2);}
+function showToast(msg,type=''){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.className='toast show'+(type?' '+type:'');
+  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ── INIT ──
+window.onload = async () => {
+  loadStorage();
+  renderNames();
+  updateApiStatus();
+  updateDbStatus();
+  document.getElementById('meetingDate').value=new Date().toISOString().slice(0,10);
+  if (dbKey && dbBinId) {
+    const ok = await loadFromDB();
+    if (ok) { renderAll(); renderNames(); return; }
+  }
+  if (meetings.length>0) renderAll();
+  updateAllBadges();
+};
+</script>
+</body>
+</html>, done=entries.filter(e=>e.done).length, pend=total-done;
+  const pct=total>0?Math.round(done/total*100):0;
+  const color=team==='nursing'?'var(--nursing)':'var(--welfare)';
+  document.getElementById(team+'SumCards').innerHTML=`
+    <div class="sum-card ${team==='nursing'?'n':'w'}"><div class="num" style="color:${color}">${total}</div><div class="lbl">전체 건수</div></div>
+    <div class="sum-card d"><div class="num" style="color:var(--success)">${done}</div><div class="lbl">✅ 처리완료</div></div>
+    <div class="sum-card p"><div class="num" style="color:var(--warning)">${pend}</div><div class="lbl">⏳ 미처리</div></div>`;
+  document.getElementById(team+'Prog').style.width=pct+'%';
+  document.getElementById(team+'ProgTxt').textContent=`${done}/${total} (${pct}%)`;
+
+  const residents=[...new Set(entries.map(e=>e.resident))].sort();
+  const sel=document.getElementById(team+'ResF');
+  const prev=sel.value;
+  sel.innerHTML='<option value="">전체 어르신</option>'+residents.map(r=>`<option value="${r}" ${r===prev?'selected':''}>${r} 어르신</option>`).join('');
+
+  const filt=teamFilt[team], resFilt=sel.value;
+  let filtered=entries;
+  if (filt==='pending') filtered=filtered.filter(e=>!e.done);
+  else if (filt==='done') filtered=filtered.filter(e=>e.done);
+  if (resFilt) filtered=filtered.filter(e=>e.resident===resFilt);
+
+  const grouped={};
+  filtered.forEach(e=>{ (grouped[e.resident]=grouped[e.resident]||[]).push(e); });
+
+  const list=document.getElementById(team+'List');
+  if (!Object.keys(grouped).length) {
+    list.innerHTML='<div class="empty" style="padding:24px"><div class="ei" style="font-size:32px">🎉</div><p>해당 조건 항목 없음</p></div>';
+    return;
+  }
+
+  list.innerHTML=Object.entries(grouped).map(([res, eList])=>{
+    const pendCnt=eList.filter(e=>!e.done).length;
+    const bodyId='tr-'+team+'-'+btoa(encodeURIComponent(res)).slice(0,10);
+    return `<div class="team-res-card">
+      <div class="team-res-head" onclick="toggleTeamRes('${bodyId}')">
+        <span style="font-size:18px">👤</span>
+        <span class="team-res-name">${esc(res)} 어르신</span>
+        <span style="font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;${pendCnt>0?'background:var(--danger-light);color:var(--danger)':'background:var(--success-light);color:var(--success)'}">
+          ${pendCnt>0?`미처리 ${pendCnt}건`:`${eList.length}건 완료`}
+        </span>
+        <span class="collapse-arrow open" id="arr-${bodyId}" style="margin-left:8px">▲</span>
+      </div>
+      <div class="team-res-body open" id="${bodyId}">
+        ${eList.map(e=>`
+          <div class="team-date-row">
+            <span class="team-date-tag">${e.meeting.date}</span>
+            <div class="team-date-items">
+              ${e.fbs.map(f=>`<div class="team-date-item">
+                ${f.priority==='high'?`<span class="pri-badge" style="margin-top:0;flex-shrink:0">⚠️</span>`:''}
+                <span>${esc(f.text)}</span>
+              </div>`).join('')}
+              ${e.noteInfo?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 10px;font-size:12px;color:#166534;margin-top:6px;line-height:1.6">
+                <span style="font-weight:700">✅ 처리내용</span> <span style="color:var(--g400);font-size:11px">${e.noteInfo.resolvedAt}</span><br>
+                ${e.noteInfo.note ? esc(e.noteInfo.note) : '<span style="color:var(--g400)">내용 없음</span>'}
+              </div>`:''}
+            </div>
+            <div class="done-toggle ${e.done?'done':'pending'}"
+                 onclick="toggleGroup('${e.meeting.id}','${encodeURIComponent(res)}','${team}')">
+              <div class="chk">${e.done?'✓':''}</div>
+              ${e.done?'처리완료':'미처리'}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleTeamRes(id) {
+  const body=document.getElementById(id), arr=document.getElementById('arr-'+id);
+  if (!body||!arr) return;
+  const isOpen=arr.classList.contains('open');
+  body.style.display=isOpen?'none':'block';
+  arr.classList.toggle('open',!isOpen);
+}
+
+function setFilt(team, val, btn) {
+  teamFilt[team]=val;
+  btn.closest('.fbar').querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTeam(team);
+}
+
+function markAllDone(team) {
+  if (!confirm('모든 항목을 처리완료로 표시하시겠습니까?\n(처리 내용은 빈칸으로 저장됩니다)')) return;
+  meetings.forEach(m=>{
+    const match=f=>team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both');
+    const residents=[...new Set(m.feedbacks.filter(match).map(f=>f.resident))];
+    residents.forEach(res=>{ if (!isGroupDone(m,res,team)) setStatus(m,res,team,true,''); });
+  });
+  save(); renderAll(); showToast('처리완료 표시됨','ok');
+}
+
+function exportTeam(team) {
+  const teamName=team==='nursing'?'간호팀':'복지팀';
+  const match=f=>team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both');
+  let rows=[];
+  meetings.forEach(m=>{
+    const residents=[...new Set(m.feedbacks.filter(match).map(f=>f.resident))];
+    residents.forEach(res=>{
+      if (!isGroupDone(m,res,team)) {
+        const fbs=m.feedbacks.filter(f=>f.resident===res&&match(f));
+        rows.push({date:m.date, resident:res, fbs});
+      }
+    });
+  });
+  if (!rows.length){showToast('미처리 항목 없음','ok');return;}
+  let txt=`세도나 시니어타운 ${teamName} 미처리 피드백\n생성: ${new Date().toLocaleString('ko-KR')}\n${'='.repeat(46)}\n\n`;
+  const byRes={};
+  rows.forEach(r=>{ (byRes[r.resident]=byRes[r.resident]||[]).push(r); });
+  Object.entries(byRes).forEach(([res,list])=>{
+    txt+=`▸ ${res} 어르신\n`;
+    list.forEach(r=>{
+      txt+=`  [${r.date}]\n`;
+      r.fbs.forEach(f=>{txt+=`    ${f.priority==='high'?'⚠️ ':''}□ ${f.text}\n`;});
+    });
+    txt+='\n';
+  });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain;charset=utf-8'}));
+  a.download=`${teamName}_미처리_${new Date().toLocaleDateString('ko-KR').replace(/\. /g,'').replace('.','')}.txt`;
+  a.click(); showToast('내보내기 완료','ok');
+}
+
+// ══════════════════════════
+// RENDER: 어르신별 조회 탭
+// ══════════════════════════
 function setResviewFilt(val, btn) {
   resviewFilt = val;
   btn.closest('.fbar').querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
@@ -1363,6 +1772,91 @@ window.onload = async () => {
 
   if (meetings.length > 0) renderAll();
   updateAllBadges();
+};
+</script>
+</body>
+</html>
+, done=entries.filter(e=>e.done).length, pend=total-done;
+  const pct=total>0?Math.round(done/total*100):0;
+  const color=team==='nursing'?'var(--nursing)':'var(--welfare)';
+  document.getElementById(team+'SumCards').innerHTML=`
+    <div class="sum-card ${team==='nursing'?'n':'w'}"><div class="num" style="color:${color}">${total}</div><div class="lbl">전체 건수</div></div>
+    <div class="sum-card d"><div class="num" style="color:var(--success)">${done}</div><div class="lbl">✅ 처리완료</div></div>
+    <div class="sum-card p"><div class="num" style="color:var(--warning)">${pend}</div><div class="lbl">⏳ 미처리</div></div>`;
+  document.getElementById(team+'Prog').style.width=pct+'%';
+  document.getElementById(team+'ProgTxt').textContent=done+'/'+total+' ('+pct+'%)';
+  const residents=[...new Set(entries.map(e=>e.resident))].sort();
+  const sel=document.getElementById(team+'ResF');
+  const prev=sel.value;
+  sel.innerHTML='<option value="">전체 어르신</option>'+residents.map(r=>'<option value="'+r+'" '+(r===prev?'selected':'')+'>'+r+' 어르신</option>').join('');
+  const filt=teamFilt[team], resFilt=sel.value;
+  let filtered=entries;
+  if(filt==='pending') filtered=filtered.filter(e=>!e.done);
+  else if(filt==='done') filtered=filtered.filter(e=>e.done);
+  if(resFilt) filtered=filtered.filter(e=>e.resident===resFilt);
+  const grouped={};
+  filtered.forEach(e=>{ (grouped[e.resident]=grouped[e.resident]||[]).push(e); });
+  const list=document.getElementById(team+'List');
+  if(!Object.keys(grouped).length){list.innerHTML='<div class="empty" style="padding:24px"><p>해당 조건 항목 없음</p></div>';return;}
+  list.innerHTML=Object.entries(grouped).map(([res,eList])=>{
+    const pendCnt=eList.filter(e=>!e.done).length;
+    const bodyId='tr-'+team+'-'+btoa(encodeURIComponent(res)).slice(0,10);
+    return '<div class="team-res-card"><div class="team-res-head" onclick="toggleTeamRes(\''+bodyId+'\')"><span style="font-size:18px">👤</span><span class="team-res-name">'+esc(res)+' 어르신</span><span style="font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;'+(pendCnt>0?'background:var(--danger-light);color:var(--danger)':'background:var(--success-light);color:var(--success)')+'">'+( pendCnt>0?'미처리 '+pendCnt+'건':eList.length+'건 완료')+'</span><span class="collapse-arrow open" id="arr-'+bodyId+'" style="margin-left:8px">▲</span></div><div class="team-res-body open" id="'+bodyId+'">'+eList.map(e=>{
+      const ni=e.noteInfo;
+      return '<div class="team-date-row"><span class="team-date-tag">'+e.meeting.date+'</span><div class="team-date-items">'+e.fbs.map(f=>'<div class="team-date-item">'+(f.priority==='high'?'<span class="pri-badge" style="margin-top:0;flex-shrink:0">⚠️</span>':'')+'<span>'+esc(f.text)+'</span></div>').join('')+(ni?'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 10px;font-size:12px;color:#166534;margin-top:6px;line-height:1.6"><span style="font-weight:700">✅ 처리내용</span> <span style="color:var(--g400);font-size:11px">'+ni.resolvedAt+'</span><br>'+(ni.note?esc(ni.note):'<span style="color:var(--g400)">내용 없음</span>')+'</div>':'')+'</div><div class="done-toggle '+(e.done?'done':'pending')+'" onclick="toggleGroup(\''+e.meeting.id+'\',\''+encodeURIComponent(res)+'\',\''+team+'\')"><div class="chk">'+(e.done?'✓':'')+'</div>'+(e.done?'처리완료':'미처리')+'</div></div>';
+    }).join('')+'</div></div>';
+  }).join('');
+}
+function toggleTeamRes(id){const body=document.getElementById(id),arr=document.getElementById('arr-'+id);if(!body||!arr)return;const isOpen=arr.classList.contains('open');body.style.display=isOpen?'none':'block';arr.classList.toggle('open',!isOpen);}
+function setFilt(team,val,btn){teamFilt[team]=val;btn.closest('.fbar').querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderTeam(team);}
+function markAllDone(team){if(!confirm('모든 항목을 처리완료로 표시하시겠습니까?'))return;meetings.forEach(m=>{const match=f=>team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both');const residents=[...new Set(m.feedbacks.filter(match).map(f=>f.resident))];residents.forEach(res=>{if(!isGroupDone(m,res,team))setStatus(m,res,team,true,'');});});save();renderAll();showToast('처리완료 표시됨','ok');}
+function exportTeam(team){const teamName=team==='nursing'?'간호팀':'복지팀';const match=f=>team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both');let rows=[];meetings.forEach(m=>{const residents=[...new Set(m.feedbacks.filter(match).map(f=>f.resident))];residents.forEach(res=>{if(!isGroupDone(m,res,team)){const fbs=m.feedbacks.filter(f=>f.resident===res&&match(f));rows.push({date:m.date,resident:res,fbs});}});});if(!rows.length){showToast('미처리 항목 없음','ok');return;}let txt='세도나 시니어타운 '+teamName+' 미처리 피드백\n생성: '+new Date().toLocaleString('ko-KR')+'\n'+'='.repeat(46)+'\n\n';const byRes={};rows.forEach(r=>{(byRes[r.resident]=byRes[r.resident]||[]).push(r);});Object.entries(byRes).forEach(([res,list])=>{txt+='▸ '+res+' 어르신\n';list.forEach(r=>{txt+='  ['+r.date+']\n';r.fbs.forEach(f=>{txt+='    '+(f.priority==='high'?'⚠️ ':'')+'□ '+f.text+'\n';});});txt+='\n';});const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain;charset=utf-8'}));a.download=teamName+'_미처리_'+new Date().toLocaleDateString('ko-KR').replace(/\. /g,'').replace('.','')+ '.txt';a.click();showToast('내보내기 완료','ok');}
+let resviewFilt='all';
+function setResviewFilt(val,btn){resviewFilt=val;btn.closest('.fbar').querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderResview();}
+function renderResview(){const resMap={};meetings.forEach(m=>{const residents=[...new Set(m.feedbacks.map(f=>f.resident))];residents.forEach(res=>{if(!resMap[res])resMap[res]=[];resMap[res].push({meeting:m,fbs:m.feedbacks.filter(f=>f.resident===res)});});});const allRes=Object.keys(resMap).sort();const has=allRes.length>0;document.getElementById('resviewEmpty').style.display=has?'none':'block';document.getElementById('resviewContent').style.display=has?'block':'none';if(!has)return;const resStats=allRes.map(res=>{const entries=resMap[res];let totalGroups=0,doneGroups=0;entries.forEach(({meeting,fbs})=>{const hasNurs=fbs.some(f=>f.dept==='nursing'||f.dept==='both');const hasWelf=fbs.some(f=>f.dept==='welfare'||f.dept==='both');if(hasNurs){totalGroups++;if(isGroupDone(meeting,res,'nursing'))doneGroups++;}if(hasWelf){totalGroups++;if(isGroupDone(meeting,res,'welfare'))doneGroups++;}});return{res,totalGroups,doneGroups,pendGroups:totalGroups-doneGroups};});const totalRes=resStats.length,fullDoneRes=resStats.filter(s=>s.pendGroups===0).length,pendRes=totalRes-fullDoneRes,totalGroups=resStats.reduce((a,s)=>a+s.totalGroups,0),doneGroups=resStats.reduce((a,s)=>a+s.doneGroups,0);document.getElementById('resviewSumCards').innerHTML='<div class="sum-card t"><div class="num">'+totalRes+'</div><div class="lbl">👥 전체 어르신</div></div><div class="sum-card p"><div class="num" style="color:var(--warning)">'+pendRes+'</div><div class="lbl">⏳ 미처리 있음</div></div><div class="sum-card d"><div class="num" style="color:var(--success)">'+fullDoneRes+'</div><div class="lbl">✅ 전체 처리완료</div></div><div class="sum-card t"><div class="num">'+doneGroups+'/'+totalGroups+'</div><div class="lbl">처리건 / 전체</div></div>';const search=(document.getElementById('resviewSearch').value||'').trim();let filtered=resStats;if(search)filtered=filtered.filter(s=>s.res.includes(search));if(resviewFilt==='pending')filtered=filtered.filter(s=>s.pendGroups>0);else if(resviewFilt==='done')filtered=filtered.filter(s=>s.pendGroups===0);const list=document.getElementById('resviewList');if(!filtered.length){list.innerHTML='<div class="empty" style="padding:24px"><p>해당하는 어르신이 없습니다.</p></div>';return;}list.innerHTML=filtered.map(({res,totalGroups,doneGroups,pendGroups})=>{const entries=resMap[res];const bodyId='rv-'+btoa(encodeURIComponent(res)).slice(0,12);const allCorrected=entries.some(e=>e.fbs.some(f=>f.corrected));const datesHtml=entries.map(({meeting,fbs})=>{const nursFbs=fbs.filter(f=>f.dept==='nursing'||f.dept==='both');const welfFbs=fbs.filter(f=>f.dept==='welfare'||f.dept==='both');const nDone=isGroupDone(meeting,res,'nursing'),wDone=isGroupDone(meeting,res,'welfare');const nNote=getGroupNote(meeting,res,'nursing'),wNote=getGroupNote(meeting,res,'welfare');let inner='';if(nursFbs.length){inner+='<div style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:12px;font-weight:700;color:var(--nursing);background:var(--nursing-light);padding:2px 8px;border-radius:10px">💉 간호팀</span><div class="done-toggle '+(nDone?'done':'pending')+'" style="font-size:11px;padding:3px 8px" onclick="toggleGroup(\''+meeting.id+'\',\''+encodeURIComponent(res)+'\',\'nursing\')"><div class="chk">'+(nDone?'✓':'')+'</div>'+(nDone?'처리완료':'미처리')+'</div></div>'+nursFbs.map(f=>'<div class="team-date-item" style="padding-left:8px">'+(f.priority==='high'?'<span class="pri-badge" style="margin-top:0;flex-shrink:0">⚠️</span>':'')+'<span>'+esc(f.text)+'</span></div>').join('')+(nNote?'<div class="note-box" style="margin:6px 8px 0"><div class="note-lbl">✅ 처리내용 <span class="note-date">'+nNote.resolvedAt+'</span></div>'+(nNote.note?esc(nNote.note):'<span style="color:var(--g400)">내용 없음</span>')+'</div>':'')+'</div>';}if(welfFbs.length){inner+='<div><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:12px;font-weight:700;color:var(--welfare);background:var(--welfare-light);padding:2px 8px;border-radius:10px">🤝 복지팀</span><div class="done-toggle '+(wDone?'done':'pending')+'" style="font-size:11px;padding:3px 8px" onclick="toggleGroup(\''+meeting.id+'\',\''+encodeURIComponent(res)+'\',\'welfare\')"><div class="chk">'+(wDone?'✓':'')+'</div>'+(wDone?'처리완료':'미처리')+'</div></div>'+welfFbs.map(f=>'<div class="team-date-item" style="padding-left:8px">'+(f.priority==='high'?'<span class="pri-badge" style="margin-top:0;flex-shrink:0">⚠️</span>':'')+'<span>'+esc(f.text)+'</span></div>').join('')+(wNote?'<div class="note-box" style="margin:6px 8px 0"><div class="note-lbl">✅ 처리내용 <span class="note-date">'+wNote.resolvedAt+'</span></div>'+(wNote.note?esc(wNote.note):'<span style="color:var(--g400)">내용 없음</span>')+'</div>':'')+'</div>';}return '<div class="team-date-row" style="align-items:flex-start"><span class="team-date-tag" style="margin-top:3px">'+meeting.date+'</span><div style="flex:1">'+inner+'</div></div>';}).join('');return '<div class="team-res-card"><div class="team-res-head" onclick="toggleTeamRes(\''+bodyId+'\')"><span style="font-size:18px">👤</span><span class="team-res-name">'+esc(res)+' 어르신</span>'+(allCorrected?'<span class="corrected-badge">🔄 이름교정</span>':'')+'<div style="margin-left:auto;display:flex;gap:6px;align-items:center">'+(pendGroups>0?'<span style="font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;background:var(--danger-light);color:var(--danger)">미처리 '+pendGroups+'건</span>':'<span style="font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;background:var(--success-light);color:var(--success)">✅ 완료</span>')+'<span style="font-size:12px;color:var(--g500)">'+entries.length+'회 기록</span></div><span class="collapse-arrow open" id="arr-'+bodyId+'" style="margin-left:8px">▲</span></div><div class="team-res-body open" id="'+bodyId+'">'+datesHtml+'</div></div>';}).join('');}
+function getAllGroups(){const result=[];meetings.forEach(m=>result.push(...getMeetingGroups(m)));return result;}
+function getMeetingGroups(m){const groups=[];const residents=[...new Set(m.feedbacks.map(f=>f.resident))];residents.forEach(res=>{const fbs=m.feedbacks.filter(f=>f.resident===res);const hasNurs=fbs.some(f=>f.dept==='nursing'||f.dept==='both');const hasWelf=fbs.some(f=>f.dept==='welfare'||f.dept==='both');if(hasNurs)groups.push({resident:res,team:'nursing',done:isGroupDone(m,res,'nursing')});if(hasWelf)groups.push({resident:res,team:'welfare',done:isGroupDone(m,res,'welfare')});});return groups;}
+function updateAllBadges(){const nursPend=meetings.reduce((acc,m)=>{const r=[...new Set(m.feedbacks.filter(f=>f.dept==='nursing'||f.dept==='both').map(f=>f.resident))];return acc+r.filter(res=>!isGroupDone(m,res,'nursing')).length;},0);const welfPend=meetings.reduce((acc,m)=>{const r=[...new Set(m.feedbacks.filter(f=>f.dept==='welfare'||f.dept==='both').map(f=>f.resident))];return acc+r.filter(res=>!isGroupDone(m,res,'welfare')).length;},0);const nb=document.getElementById('nursingBadge'),wb=document.getElementById('welfareBadge');nb.style.display=nursPend>0?'inline-block':'none';nb.textContent=nursPend;wb.style.display=welfPend>0?'inline-block':'none';wb.textContent=welfPend;const totalPend=nursPend+welfPend;const rvb=document.getElementById('resviewBadge');rvb.style.display=totalPend>0?'inline-block':'none';rvb.textContent=totalPend;}
+function renderAll(){renderDates();renderTeam('nursing');renderTeam('welfare');renderResview();updateAllBadges();}
+function switchTab(name){document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');const idx={input:0,dates:1,nursing:2,welfare:3,resview:4,residents:5};document.querySelectorAll('.ntab')[idx[name]].classList.add('active');if(name==='dates')renderDates();else if(name==='nursing')renderTeam('nursing');else if(name==='welfare')renderTeam('welfare');else if(name==='resview')renderResview();}
+function renderNames(){document.getElementById('resCount').textContent='('+residentNames.length+'명)';const g=document.getElementById('nameGrid');g.innerHTML=residentNames.length?residentNames.map((n,i)=>'<div class="name-chip"><span>'+n+'</span><span class="del-btn" onclick="delName('+i+')">×</span></div>').join(''):'<div style="color:var(--g400);font-size:12px;padding:6px">등록된 어르신이 없습니다.</div>';}
+function addName(){const inp=document.getElementById('newName'),n=inp.value.trim();if(!n)return;if(residentNames.includes(n)){showToast('이미 등록됨','err');return;}residentNames.push(n);save();renderNames();inp.value='';showToast(n+' 추가됨');}
+function addBulk(){const raw=document.getElementById('bulkNames').value;const names=raw.split('\n').map(n=>n.trim()).filter(Boolean);let added=0;names.forEach(n=>{if(!residentNames.includes(n)){residentNames.push(n);added++;}});save();renderNames();document.getElementById('bulkNames').value='';showToast(added+'명 추가됨');}
+function delName(i){const n=residentNames[i];if(!confirm('"'+n+'" 삭제?'))return;residentNames.splice(i,1);save();renderNames();showToast(n+' 삭제됨');}
+function clearNames(){if(!confirm('전체 삭제?'))return;residentNames=[];save();renderNames();showToast('초기화됨');}
+function loadNameFile(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{const names=ev.target.result.split('\n').map(n=>n.trim().replace(/\r/g,'')).filter(Boolean);let added=0;names.forEach(n=>{if(!residentNames.includes(n)){residentNames.push(n);added++;}});save();renderNames();showToast(added+'명 추가됨','ok');};r.readAsText(f,'UTF-8');e.target.value='';}
+function loadFile(e){const f=e.target.files[0];if(!f)return;document.getElementById('fileLabel').textContent='📄 '+f.name;const r=new FileReader();r.onload=ev=>{const t=ev.target.result;if(t.includes('?')){const r2=new FileReader();r2.onload=ev2=>{document.getElementById('meetingText').value=ev2.target.result;};r2.readAsText(f,'EUC-KR');}else document.getElementById('meetingText').value=t;showToast(f.name+' 로드됨');};r.readAsText(f,'UTF-8');e.target.value='';}
+function dragOver(e){e.preventDefault();document.getElementById('uploadZone').classList.add('drag');}
+function dragLeave(){document.getElementById('uploadZone').classList.remove('drag');}
+function dropFile(e){e.preventDefault();dragLeave();const f=e.dataTransfer.files[0];if(f&&f.name.endsWith('.txt')){const r=new FileReader();r.onload=ev=>{document.getElementById('meetingText').value=ev.target.result;showToast(f.name+' 로드됨');};r.readAsText(f,'UTF-8');}else showToast('.txt 파일만 지원','err');}
+function clearInput(){document.getElementById('meetingText').value='';document.getElementById('fileLabel').textContent='';document.getElementById('chatPanel').style.display='none';document.getElementById('chatWrap').innerHTML='';}
+function appendBubble(role,text){const c=document.getElementById('chatWrap');const d=document.createElement('div');d.className='cmsg '+role;d.innerHTML='<div class="cavatar '+role+'">'+(role==='ai'?'🤖':'👤')+'</div><div class="cbubble '+role+'"><pre>'+esc(text)+'</pre></div>';c.appendChild(d);c.scrollTop=c.scrollHeight;return d;}
+function appendTyping(){const c=document.getElementById('chatWrap'),id='typ-'+Date.now();const d=document.createElement('div');d.className='cmsg ai';d.id=id;d.innerHTML='<div class="cavatar ai">🤖</div><div class="cbubble ai"><span class="typing"><span>●</span><span>●</span><span>●</span></span> 분석 중...</div>';c.appendChild(d);c.scrollTop=c.scrollHeight;return id;}
+function removeTyping(id){const e=document.getElementById(id);if(e)e.remove();}
+function esc(t){return(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function rand(){return Math.random().toString(36).slice(2);}
+function showToast(msg,type){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type?' '+type:'');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2500);}
+window.onload=async()=>{loadStorage();renderNames();updateApiStatus();updateDbStatus();document.getElementById('meetingDate').value=new Date().toISOString().slice(0,10);if(dbKey&&dbBinId){const ok=await loadFromDB();if(ok){renderAll();renderNames();return;}}if(meetings.length>0)renderAll();updateAllBadges();};
+</script>
+</body>
+</html>
+{document.getElementById('uploadZone').classList.remove('drag');}
+function dropFile(e){e.preventDefault();dragLeave();const f=e.dataTransfer.files[0];if(f&&f.name.endsWith('.txt')){const r=new FileReader();r.onload=ev=>{document.getElementById('meetingText').value=ev.target.result;showToast(f.name+' 로드됨');};r.readAsText(f,'UTF-8');}else showToast('.txt 파일만 지원','err');}
+function clearInput(){document.getElementById('meetingText').value='';document.getElementById('fileLabel').textContent='';document.getElementById('chatPanel').style.display='none';document.getElementById('chatWrap').innerHTML='';}
+function appendBubble(role,text){const c=document.getElementById('chatWrap');const d=document.createElement('div');d.className='cmsg '+role;d.innerHTML='<div class="cavatar '+role+'">'+(role==='ai'?'🤖':'👤')+'</div><div class="cbubble '+role+'"><pre>'+esc(text)+'</pre></div>';c.appendChild(d);c.scrollTop=c.scrollHeight;return d;}
+function appendTyping(){const c=document.getElementById('chatWrap'),id='typ-'+Date.now();const d=document.createElement('div');d.className='cmsg ai';d.id=id;d.innerHTML='<div class="cavatar ai">🤖</div><div class="cbubble ai"><span class="typing"><span>●</span><span>●</span><span>●</span></span></div>';c.appendChild(d);c.scrollTop=c.scrollHeight;return id;}
+function removeTyping(id){const e=document.getElementById(id);if(e)e.remove();}
+function esc(t){return(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function rand(){return Math.random().toString(36).slice(2);}
+function showToast(msg,type){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type?' '+type:'');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('show');},2500);}
+window.onload=async function(){loadStorage();renderNames();updateApiStatus();updateDbStatus();document.getElementById('meetingDate').value=new Date().toISOString().slice(0,10);if(dbKey&&dbBinId){const ok=await loadFromDB();if(ok){renderAll();renderNames();return;}}if(meetings.length>0)renderAll();updateAllBadges();};
+</script>
+</body>
+</html>
+Id){const ok=await loadFromDB();if(ok){renderAll();renderNames();return;}}if(meetings.length>0)renderAll();updateAllBadges();};
+</script>
+</body>
+</html>);
 };
 </script>
 </body>
