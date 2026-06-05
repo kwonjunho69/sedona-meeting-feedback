@@ -185,6 +185,15 @@ textarea{width:100%;resize:vertical;line-height:1.65}
 hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 .collapse-arrow{font-size:11px;color:var(--g400);transition:.2s;margin-left:auto}.collapse-arrow.open{transform:rotate(180deg)}
 
+
+/* 층 체크박스 필터 */
+.floor-filter-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;padding:10px 14px;background:var(--g50);border-radius:var(--r);border:1px solid var(--g200)}
+.floor-filter-bar label{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;cursor:pointer;padding:4px 10px;border-radius:20px;border:1.5px solid var(--g300);background:#fff;color:var(--g600);transition:.15s;user-select:none}
+.floor-filter-bar label:hover{border-color:var(--primary);color:var(--primary)}
+.floor-filter-bar input[type=checkbox]{accent-color:var(--primary);width:15px;height:15px;cursor:pointer}
+.floor-filter-bar label.checked{background:var(--primary);border-color:var(--primary);color:#fff}
+.floor-filter-bar label.checked input[type=checkbox]{accent-color:#fff}
+
 /* 층별 그룹 */
 .floor-group{margin-bottom:14px}
 .floor-header{display:flex;align-items:center;gap:8px;padding:8px 14px;background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;border-radius:var(--r);margin-bottom:6px;font-size:13px;font-weight:700}
@@ -279,6 +288,9 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
         <span>처리율</span><span id="nursingProgTxt"></span>
       </div>
     </div>
+    <div class="floor-filter-bar" id="nursingFloorFilter">
+      <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
+    </div>
     <div class="fbar">
       <span style="font-size:12px;font-weight:600;color:var(--g500)">필터:</span>
       <button class="fbtn active" onclick="setFilt('nursing','all',this)">전체</button>
@@ -306,6 +318,9 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--g500);margin-top:4px">
         <span>처리율</span><span id="welfareProgTxt"></span>
       </div>
+    </div>
+    <div class="floor-filter-bar" id="welfareFloorFilter">
+      <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
     </div>
     <div class="fbar">
       <span style="font-size:12px;font-weight:600;color:var(--g500)">필터:</span>
@@ -463,6 +478,7 @@ let meetings = [], residentNames = [];
 let apiKey = '', modelId = 'gemini-2.5-flash';
 let dbKey = '', dbBinId = '';
 let teamFilt = { nursing:'all', welfare:'all' };
+let floorFilt = { nursing: new Set(['all']), welfare: new Set(['all']) };
 let resviewFilt = 'all';
 let pendingNote = null; // { meetingId, resident, teamDept }
 
@@ -1002,6 +1018,13 @@ function renderTeam(team) {
   if(resFilt) filtered=filtered.filter(e=>e.resident===resFilt);
 
   // 층별 그룹핑
+  const allFloors=[...new Set(entries.map(e=>getResidentFloor(e.resident)))];
+  renderFloorCheckboxes(team, allFloors);
+
+  // 층 체크박스 필터 적용
+  const fset=floorFilt[team];
+  if(!fset.has('all')) filtered=filtered.filter(e=>fset.has(getResidentFloor(e.resident)));
+
   const floorMap={};
   filtered.forEach(e=>{
     const fl=getResidentFloor(e.resident);
@@ -1087,6 +1110,33 @@ function toggleTeamRes(id) {
   arr.classList.toggle('open',!isOpen);
 }
 
+function toggleFloorFilt(team, floor){
+  const fset=floorFilt[team];
+  if(floor==='all'){ fset.clear(); fset.add('all'); }
+  else { fset.delete('all'); if(fset.has(floor))fset.delete(floor); else fset.add(floor); if(fset.size===0)fset.add('all'); }
+  renderTeam(team);
+}
+function renderFloorCheckboxes(team, floors){
+  const bar=document.getElementById(team+'FloorFilter');
+  if(!bar)return;
+  const fset=floorFilt[team];
+  const allChecked=fset.has('all');
+  while(bar.children.length>1)bar.removeChild(bar.lastChild);
+  const makeLabel=(fl,label,checked)=>{
+    const lbl=document.createElement('label');
+    lbl.className=checked?'checked':'';
+    const cb=document.createElement('input');
+    cb.type='checkbox'; cb.checked=checked;
+    cb.addEventListener('change',()=>toggleFloorFilt(team,fl));
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(' '+label));
+    bar.appendChild(lbl);
+  };
+  makeLabel('all','전체',allChecked);
+  floors.sort((a,b)=>a==='?'?1:b==='?'?-1:a.localeCompare(b)).forEach(fl=>{
+    makeLabel(fl,fl==='?'?'미지정':fl+'층',!allChecked&&fset.has(fl));
+  });
+}
 function setFilt(team, val, btn) {
   teamFilt[team]=val;
   btn.closest('.fbar').querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
