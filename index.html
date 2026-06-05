@@ -524,16 +524,25 @@ function save() {
   localStorage.setItem('sd_names', JSON.stringify(residentNames));
   if (dbKey && dbBinId) saveToDB();
 }
+// ── 자동 연결 기본값 (세도나 시니어타운) ──
+const _DEF_API = 'AQ.Ab8RN6Ltf4-xNoimuufmJTwfwy5QGk_kqqTfNU4nEduTYboIQ';
+const _DEF_DBK = '$2a$10$5tm3Y7mGcyqS9j3SIyb9bOXvFWT865seVduIqcxjtsGdZO7HtfkiC';
+const _DEF_BIN = '6a223db1da38895dfe8a301a';
+
 function loadStorage() {
   try {
     const m = localStorage.getItem('sd_meetings');
     const n = localStorage.getItem('sd_names');
     if (m) meetings = JSON.parse(m);
     if (n) residentNames = JSON.parse(n);
-    apiKey  = localStorage.getItem('sd_api')   || '';
+    apiKey  = localStorage.getItem('sd_api')   || _DEF_API;
     modelId = localStorage.getItem('sd_model') || 'gemini-2.5-flash';
-    dbKey   = localStorage.getItem('sd_dbkey') || '';
-    dbBinId = localStorage.getItem('sd_binid') || '';
+    dbKey   = localStorage.getItem('sd_dbkey') || _DEF_DBK;
+    dbBinId = localStorage.getItem('sd_binid') || _DEF_BIN;
+    // 기본값을 localStorage에도 저장 (이후 자동 유지)
+    if(!localStorage.getItem('sd_api'))   localStorage.setItem('sd_api',   apiKey);
+    if(!localStorage.getItem('sd_dbkey')) localStorage.setItem('sd_dbkey', dbKey);
+    if(!localStorage.getItem('sd_binid')) localStorage.setItem('sd_binid', dbBinId);
     // 구버전(string[]) → 신버전({name,room}[]) 마이그레이션
     residentNames = residentNames.map(r=>typeof r==='string'?{name:r,room:''}:r);
   } catch(e) {}
@@ -769,7 +778,7 @@ async function runAI() {
         body:JSON.stringify({
           system_instruction:{parts:[{text:sysPrompt}]},
           contents:[{role:'user',parts:[{text:`회의 날짜: ${dateVal}\n\n회의록:\n${inputText}`}]}],
-          generationConfig:{maxOutputTokens:16384, temperature:0.1}
+          generationConfig:{maxOutputTokens:65536, temperature:0.1}
         })
       });
       if (res.ok) {
