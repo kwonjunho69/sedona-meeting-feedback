@@ -692,7 +692,7 @@ async function runAI() {
   appendBubble('user', `${dateVal} 회의록 분석 요청`);
   const tid = appendTyping();
 
-  const MAX=10000;
+  const MAX=80000;
   const inputText = text.length>MAX ? text.slice(0,MAX)+'\n...(이하 생략)' : text;
   const namesCtx = residentNames.length>0
     ? `\n\n등록된 어르신 명단: ${residentNames.join(', ')}\n음성인식 오류로 잘못된 이름은 위 명단으로 교정하고 corrected:true 표시.` : '';
