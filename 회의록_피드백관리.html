@@ -505,7 +505,7 @@ async function saveToDB() {
   try {
     const r = await fetch(`${JSONBIN}/${dbBinId}`, {
       method:'PUT',
-      headers:{'Content-Type':'application/json','X-Access-Key':dbKey},
+      headers:{'Content-Type':'application/json','X-Master-Key':dbKey},
       body: JSON.stringify({ meetings, residentNames, updatedAt: new Date().toISOString() })
     });
     setDbDot(r.ok ? 'ok' : 'err');
@@ -518,7 +518,7 @@ async function loadFromDB() {
   setDbStatus('☁️ 서버에서 불러오는 중...');
   try {
     const r = await fetch(`${JSONBIN}/${dbBinId}/latest`, {
-      headers:{'X-Access-Key':dbKey}
+      headers:{'X-Master-Key':dbKey}
     });
     if (!r.ok) {
       const err = await r.json().catch(()=>({}));
@@ -555,7 +555,7 @@ async function createNewBin() {
       method:'POST',
       headers:{
         'Content-Type':'application/json',
-        'X-Access-Key': key,
+        'X-Master-Key': key,
         'X-Bin-Name':   'sedona-meeting',
         'X-Bin-Private':'false'
       },
