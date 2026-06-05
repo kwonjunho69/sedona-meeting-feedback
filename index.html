@@ -1017,9 +1017,9 @@ function renderTeam(team) {
   else if(filt==='done') filtered=filtered.filter(e=>e.done);
   if(resFilt) filtered=filtered.filter(e=>e.resident===resFilt);
 
-  // 층별 그룹핑
-  const allFloors=[...new Set(entries.map(e=>getResidentFloor(e.resident)))];
-  renderFloorCheckboxes(team, allFloors);
+  // 층별 그룹핑 - 항상 1~4층 고정 표시
+  const fixedFloors=['1','2','3','4'];
+  renderFloorCheckboxes(team, fixedFloors);
 
   // 층 체크박스 필터 적용
   const fset=floorFilt[team];
