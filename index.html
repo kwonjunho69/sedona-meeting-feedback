@@ -567,7 +567,6 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 // ══════════════════════════
 let meetings = [], residentNames = [];
 let apiKey = '', modelId = 'gemini-2.5-flash';
-// Supabase 사용 (dbKey/dbBinId 불필요)
 let teamFilt = { nursing:'all', welfare:'all' };
 let currentTab = 'input'; // 현재 활성 탭 추적
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
@@ -616,7 +615,7 @@ function save() {
   localStorage.setItem('sd_meetings', JSON.stringify(meetings));
   localStorage.setItem('sd_names', JSON.stringify(residentNames));
   localStorage.setItem('sd_users', JSON.stringify(users));
-  if (dbKey && dbBinId) saveToDB();
+  saveToDB(); // Supabase 자동 저장
 }
 // ── 사용자 관리 ──
 // users = [{id, name, password, role}]  role: 'admin'|'user'
@@ -1892,8 +1891,6 @@ window.onload = async () => {
   try {
     const hash=new URLSearchParams(window.location.hash.slice(1));
     let changed=false;
-    if(hash.get('k')){dbKey=hash.get('k');localStorage.setItem('sd_dbkey',dbKey);changed=true;}
-    if(hash.get('b')){dbBinId=hash.get('b');localStorage.setItem('sd_binid',dbBinId);changed=true;}
     if(hash.get('api')){apiKey=hash.get('api');localStorage.setItem('sd_api',apiKey);changed=true;}
     if(hash.get('m')){modelId=hash.get('m');localStorage.setItem('sd_model',modelId);}
     if(changed){history.replaceState(null,'',window.location.pathname);}
