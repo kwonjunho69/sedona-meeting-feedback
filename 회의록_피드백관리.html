@@ -417,45 +417,27 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   </div>
 </div>
 
-<!-- ══ DB Modal ══ -->
+<!-- ══ DB Modal (Supabase) ══ -->
 <div class="modal-ov" id="dbModal">
-  <div class="modal" style="max-width:520px">
-    <h2>☁️ 클라우드 DB 설정 (JSONBin.io)</h2>
-    <p style="font-size:13px;color:var(--g600);margin:6px 0 10px;line-height:1.65">무료 클라우드 DB에 연결하면 어떤 PC·태블릿에서도 같은 데이터를 사용할 수 있습니다.</p>
-    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 13px;font-size:12px;color:#1e40af;line-height:1.9;margin-bottom:14px">
-      <b>📋 JSONBin.io 설정 방법 (완전 무료 · 3분)</b><br>
-      1. <a href="https://jsonbin.io" target="_blank" style="color:var(--primary);font-weight:700">jsonbin.io</a> → Sign Up (이메일 가입)<br>
-      2. 로그인 후 상단 <b>API Keys</b> → <b>Secret Key</b> 복사<br>
-      3. 아래 Secret Key 입력 후 <b>🆕 새 Bin 자동 생성</b> 클릭<br>
-      4. Bin ID가 자동 입력됨 → <b>💾 저장</b>
-    </div>
-    <div style="margin-bottom:10px">
-      <div style="font-size:12px;font-weight:600;margin-bottom:4px">Secret Key (API Key)</div>
-      <input type="password" id="dbKeyIn" placeholder="$2a$10$..." style="width:100%">
-    </div>
-    <div style="margin-bottom:6px">
-      <div style="font-size:12px;font-weight:600;margin-bottom:4px">Bin ID</div>
-      <div style="display:flex;gap:6px">
-        <input type="text" id="dbBinIn" placeholder="자동 생성 또는 직접 입력" style="flex:1">
-        <button class="btn btn-outline btn-sm" onclick="createNewBin()" id="createBinBtn">🆕 새 Bin 생성</button>
+  <div class="modal" style="max-width:440px">
+    <h2>☁️ Supabase DB 연결 상태</h2>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin:12px 0">
+      <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:6px">✅ PostgreSQL 연결됨</div>
+      <div style="font-size:12px;color:#166534;line-height:1.8">
+        프로젝트: <b>sedona-meeting</b><br>
+        서버: <b>Seoul (ap-northeast-2)</b><br>
+        URL: alovgxybtgtlxlfomgub.supabase.co
       </div>
-      <div style="font-size:11px;color:var(--g400);margin-top:3px">이미 Bin이 있으면 Bin ID만 입력. 여러 PC에서 같은 Bin ID를 사용하세요.</div>
     </div>
-    <div class="row" style="margin-top:14px">
-      <button class="btn btn-primary btn-sm" onclick="saveDbConfig()">💾 저장 및 동기화</button>
-      <button class="btn btn-outline btn-sm" onclick="syncFromDB()">🔄 서버에서 불러오기</button>
+    <div class="row">
+      <button class="btn btn-primary btn-sm" onclick="syncFromDB();closeDbModal()">🔄 지금 동기화</button>
       <button class="btn btn-outline btn-sm" onclick="closeDbModal()">닫기</button>
-      <button class="btn btn-outline btn-sm" style="margin-left:auto;color:var(--danger)" onclick="delDbConfig()">연결 해제</button>
-    </div>
-    <div style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
-      <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:6px">📲 다른 PC에서 자동 연결</div>
-      <div style="font-size:12px;color:#166534;margin-bottom:8px;line-height:1.6">아래 버튼으로 설정 URL을 복사한 뒤, 다른 PC에서 그 URL을 열면 자동으로 연결됩니다.</div>
-      <button class="btn btn-outline btn-sm" style="color:#166534;border-color:#86efac" onclick="copySetupUrl()">🔗 설정 URL 복사</button>
-      <div id="setupUrlBox" style="display:none;margin-top:8px;font-size:11px;background:#fff;border:1px solid #86efac;border-radius:6px;padding:6px 8px;word-break:break-all;color:#4b5563"></div>
     </div>
     <div id="dbStatus" style="margin-top:10px;font-size:12px;color:var(--g500);line-height:1.6"></div>
   </div>
 </div>
+
+
 
 <!-- ══ 처리 내용 입력 Modal ══ -->
 <div class="modal-ov" id="noteModal">
@@ -585,7 +567,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 // ══════════════════════════
 let meetings = [], residentNames = [];
 let apiKey = '', modelId = 'gemini-2.5-flash';
-let dbKey = '', dbBinId = '';
+// Supabase 사용 (dbKey/dbBinId 불필요)
 let teamFilt = { nursing:'all', welfare:'all' };
 let currentTab = 'input'; // 현재 활성 탭 추적
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
@@ -645,10 +627,12 @@ const DEFAULT_USERS = [
   { id:'admin', name:'관리자', password:'1234', role:'admin' }
 ];
 
-// ── 자동 연결 기본값 (세도나 시니어타운) ──
+// ── Supabase 설정 (세도나 시니어타운) ──
 const _DEF_API = 'AQ.Ab8RN6Ltf4-xNoimuufmJTwfwy5QGk_kqqTfNU4nEduTYboIQ';
-const _DEF_DBK = '$2a$10$5tm3Y7mGcyqS9j3SIyb9bOXvFWT865seVduIqcxjtsGdZO7HtfkiC';
-const _DEF_BIN = '6a223db1da38895dfe8a301a';
+const SB_URL = 'https://alovgxybtgtlxlfomgub.supabase.co';
+const SB_KEY = 'sb_publishable_Nhhjuf5Y2e_5zM99E1uUgg_8Ky5M4Oi';
+const SB_REST = SB_URL + '/rest/v1';
+const SB_HDR = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};
 
 function loadStorage() {
   try {
@@ -658,12 +642,8 @@ function loadStorage() {
     if (n) residentNames = JSON.parse(n);
     apiKey  = localStorage.getItem('sd_api')   || _DEF_API;
     modelId = localStorage.getItem('sd_model') || 'gemini-2.5-flash';
-    dbKey   = localStorage.getItem('sd_dbkey') || _DEF_DBK;
-    dbBinId = localStorage.getItem('sd_binid') || _DEF_BIN;
-    // 기본값을 localStorage에도 저장 (이후 자동 유지)
-    if(!localStorage.getItem('sd_api'))   localStorage.setItem('sd_api',   apiKey);
-    if(!localStorage.getItem('sd_dbkey')) localStorage.setItem('sd_dbkey', dbKey);
-    if(!localStorage.getItem('sd_binid')) localStorage.setItem('sd_binid', dbBinId);
+    // 기본값을 localStorage에도 저장
+    if(!localStorage.getItem('sd_api')) localStorage.setItem('sd_api', apiKey);
     // 사용자 목록 로드
     const u = localStorage.getItem('sd_users');
     users = u ? JSON.parse(u) : [...DEFAULT_USERS];
@@ -676,137 +656,164 @@ function loadStorage() {
 // ── JSONBIN.IO DB ──
 const JSONBIN = 'https://api.jsonbin.io/v3/b';
 
+async function sbFetch(path, opts={}) {
+  const r = await fetch(SB_REST + path, {
+    headers: {...SB_HDR, ...(opts.headers||{})},
+    ...opts
+  });
+  if (!r.ok) {
+    const err = await r.text();
+    throw new Error('Supabase ' + r.status + ': ' + err.slice(0,100));
+  }
+  return r.status === 204 ? null : r.json();
+}
+
 async function saveToDB() {
-  if (!dbKey || !dbBinId) return;
   setDbDot('sync');
   document.getElementById('syncIcon').textContent = '⏳';
   try {
-    const r = await fetch(`${JSONBIN}/${dbBinId}`, {
-      method:'PUT',
-      headers:{'Content-Type':'application/json','X-Master-Key':dbKey},
-      body: JSON.stringify({ meetings, residentNames, users, updatedAt: new Date().toISOString() })
-    });
-    if (r.ok) {
-      setDbDot('ok');
-      lastSyncTime = new Date();
-      updateSyncLabel();
-    } else {
-      setDbDot('err');
-      document.getElementById('syncIcon').textContent = '❌';
-      // 10초 후 재시도
-      setTimeout(()=>saveToDB(), 10000);
+    // 1. 회의록 upsert
+    if (meetings.length > 0) {
+      await sbFetch('/meetings', {
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body: JSON.stringify(meetings.map(m=>({
+          id:m.id, date:m.date, summary:m.summary||'',
+          key_issues:m.keyIssues||[], raw_text:m.rawText||'',
+          updated_at:new Date().toISOString()
+        })))
+      });
     }
+
+    // 2. 피드백 upsert
+    const allFbs = meetings.flatMap(m=>
+      (m.feedbacks||[]).map(f=>({
+        id:f.id, meeting_id:m.id, resident:f.resident,
+        dept:f.dept||'nursing', text:f.text||'',
+        priority:f.priority||'normal', corrected:!!f.corrected,
+        original_name:f.originalName||f.resident
+      }))
+    );
+    if (allFbs.length > 0) {
+      await sbFetch('/feedbacks', {
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body: JSON.stringify(allFbs)
+      });
+    }
+
+    // 3. 처리상태 upsert
+    const allStatus = [];
+    meetings.forEach(m=>{
+      Object.entries(m.status||{}).forEach(([key,val])=>{
+        const parts = key.split('|');
+        const resident = parts[0], dept = parts[1];
+        const done = typeof val==='object' ? !!val.done : !!val;
+        allStatus.push({
+          meeting_id:m.id, resident, dept, done,
+          note: (typeof val==='object'&&val.note)||'',
+          resolved_by:(typeof val==='object'&&val.resolvedBy)||'',
+          resolved_at:(typeof val==='object'&&val.resolvedAt)||''
+        });
+      });
+    });
+    if (allStatus.length > 0) {
+      await sbFetch('/processing_status', {
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body: JSON.stringify(allStatus)
+      });
+    }
+
+    // 4. 어르신 명단 upsert
+    if (residentNames.length > 0) {
+      await sbFetch('/residents', {
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body: JSON.stringify(residentNames.map(r=>({name:resName(r),room:resRoom(r)})))
+      });
+    }
+
+    // 5. 사용자 upsert
+    if (users.length > 0) {
+      await sbFetch('/app_users', {
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body: JSON.stringify(users)
+      });
+    }
+
+    setDbDot('ok');
+    lastSyncTime = new Date();
+    updateSyncLabel();
   } catch(e) {
+    console.error('saveToDB error:', e);
     setDbDot('err');
     document.getElementById('syncIcon').textContent = '❌';
-    setTimeout(()=>saveToDB(), 10000);
+    setTimeout(()=>saveToDB(), 15000);
   }
 }
 
-let lastSyncTime = null;
-function updateSyncLabel(){
-  const el = document.getElementById('syncTime');
-  const icon = document.getElementById('syncIcon');
-  if(!el) return;
-  if(!lastSyncTime){ el.textContent='동기화'; return; }
-  icon.textContent = '✅';
-  const diff = Math.floor((new Date()-lastSyncTime)/1000);
-  if(diff < 60) el.textContent = diff+'초 전';
-  else if(diff < 3600) el.textContent = Math.floor(diff/60)+'분 전';
-  else el.textContent = '방금';
-}
-
-async function manualSync(){
-  const btn = document.getElementById('syncBtn');
-  if(btn) btn.style.opacity='0.6';
-  await saveToDB();
-  const ok = await loadFromDB();
-  if(ok){ renderAll(); renderNames(); showToast('동기화 완료','ok'); }
-  if(btn) btn.style.opacity='1';
-}
-
 async function loadFromDB() {
-  if (!dbKey || !dbBinId) return false;
   setDbDot('sync');
   setDbStatus('☁️ 서버에서 불러오는 중...');
   try {
-    const r = await fetch(`${JSONBIN}/${dbBinId}/latest`, {
-      headers:{'X-Master-Key':dbKey}
-    });
-    if (!r.ok) {
-      const err = await r.json().catch(()=>({}));
-      setDbDot('err');
-      setDbStatus(`❌ 불러오기 실패: ${err.message||r.status}`);
-      return false;
-    }
-    const data = await r.json();
-    const rec = data.record;
-    if (rec?.meetings !== undefined) {
-      // 로컬과 DB 데이터 병합 (날짜 기준, 둘 다 보존)
-      const dbMeetings = rec.meetings || [];
-      const localDates = new Set(meetings.map(m=>m.date));
-      const dbDates = new Set(dbMeetings.map(m=>m.date));
-      // 로컬에만 있는 것 + DB에 있는 것 병합
-      const merged = [...meetings]; // 로컬 우선 보존
-      dbMeetings.forEach(dm=>{
-        if(!localDates.has(dm.date)) merged.push(dm); // DB에만 있는 날짜 추가
+    const [meetData, fbData, stData, resData, usrData] = await Promise.all([
+      sbFetch('/meetings?order=date.desc'),
+      sbFetch('/feedbacks?order=created_at.asc'),
+      sbFetch('/processing_status?select=*'),
+      sbFetch('/residents?order=name.asc'),
+      sbFetch('/app_users?select=*')
+    ]);
+
+    // 회의록 + 피드백 + 상태 조합
+    meetings = meetData.map(m => {
+      const fbs = fbData.filter(f=>f.meeting_id===m.id).map(f=>({
+        id:f.id, resident:f.resident, dept:f.dept,
+        text:f.text, priority:f.priority,
+        corrected:f.corrected, originalName:f.original_name
+      }));
+      const status = {};
+      stData.filter(s=>s.meeting_id===m.id).forEach(s=>{
+        const key = s.resident+'|'+s.dept;
+        status[key] = s.done
+          ? {done:true,note:s.note||'',resolvedBy:s.resolved_by||'',resolvedAt:s.resolved_at||''}
+          : false;
       });
-      merged.sort((a,b)=>b.date.localeCompare(a.date));
-      meetings = merged;
+      return {
+        id:m.id, date:m.date.slice(0,10),
+        summary:m.summary||'', keyIssues:m.key_issues||[],
+        rawText:m.raw_text||'', feedbacks:fbs, status
+      };
+    });
 
-      // 어르신 명단: DB 우선 (더 많은 쪽)
-      if((rec.residentNames||[]).length >= residentNames.length)
-        residentNames = rec.residentNames.map(r=>typeof r==='string'?{name:r,room:''}:r);
+    residentNames = resData.map(r=>({name:r.name,room:r.room||''}));
 
-      if(rec.users) { users = rec.users; if(!users.find(x=>x.id==='admin')) users.unshift(...DEFAULT_USERS); }
-      localStorage.setItem('sd_meetings', JSON.stringify(meetings));
-      localStorage.setItem('sd_names',    JSON.stringify(residentNames));
-      localStorage.setItem('sd_users',    JSON.stringify(users));
-
-      // 병합된 데이터를 DB에 다시 저장 (동기화)
-      setTimeout(()=>saveToDB(), 500);
+    if (usrData.length>0) {
+      users = usrData;
+      if(!users.find(u=>u.id==='admin')) users.unshift(...DEFAULT_USERS);
     }
+
+    localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+    localStorage.setItem('sd_names', JSON.stringify(residentNames));
+    localStorage.setItem('sd_users', JSON.stringify(users));
     setDbDot('ok');
-    setDbStatus(`✅ 동기화 완료 (${new Date().toLocaleTimeString('ko-KR')})`);
+    setDbStatus('✅ 동기화 완료 ('+new Date().toLocaleTimeString('ko-KR')+')');
+    lastSyncTime = new Date();
+    updateSyncLabel();
     return true;
   } catch(e) {
+    console.error('loadFromDB error:', e);
     setDbDot('err');
-    setDbStatus(`❌ 연결 오류: ${e.message}`);
+    setDbStatus('❌ 연결 오류: '+e.message);
     return false;
   }
 }
 
-async function createNewBin() {
-  const key = document.getElementById('dbKeyIn').value.trim();
-  if (!key) { setDbStatus('❌ Secret Key를 먼저 입력하세요'); return; }
-  const btn = document.getElementById('createBinBtn');
-  btn.disabled = true; btn.textContent = '생성 중...';
-  setDbStatus('🆕 새 Bin 생성 중...');
-  try {
-    const r = await fetch(JSONBIN, {
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'X-Master-Key': key,
-        'X-Bin-Name':   'sedona-meeting',
-        'X-Bin-Private':'false'
-      },
-      body: JSON.stringify({ meetings:[], residentNames:[], createdAt: new Date().toISOString() })
-    });
-    const data = await r.json();
-    if (r.ok && data.metadata?.id) {
-      document.getElementById('dbBinIn').value = data.metadata.id;
-      setDbStatus(`✅ Bin 생성됨! ID: ${data.metadata.id}\n이제 💾 저장 버튼을 누르세요.`);
-    } else {
-      setDbStatus(`❌ 생성 실패: ${data.message||r.status}`);
-    }
-  } catch(e) { setDbStatus(`❌ 오류: ${e.message}`); }
-  btn.disabled = false; btn.textContent = '🆕 새 Bin 생성';
-}
 
 async function syncFromDB() {
   const ok = await loadFromDB();
-  if (ok) { renderAll(); renderNames(); showToast('서버에서 불러오기 완료','ok'); }
+  if (ok) { renderAll(); renderNames(); showToast('동기화 완료','ok'); }
 }
 
 function setDbDot(state) {
@@ -819,33 +826,15 @@ function setDbStatus(msg) {
 
 // ── DB MODAL ──
 function openDbModal() {
-  document.getElementById('dbKeyIn').value = dbKey;
-  document.getElementById('dbBinIn').value = dbBinId;
   setDbStatus('');
   document.getElementById('dbModal').classList.add('open');
 }
 function closeDbModal() { document.getElementById('dbModal').classList.remove('open'); }
-async function saveDbConfig() {
-  const key = document.getElementById('dbKeyIn').value.trim();
-  const bin = document.getElementById('dbBinIn').value.trim();
-  if (!key || !bin) { setDbStatus('❌ Secret Key와 Bin ID를 모두 입력하세요'); return; }
-  dbKey = key; dbBinId = bin;
-  localStorage.setItem('sd_dbkey', dbKey);
-  localStorage.setItem('sd_binid', dbBinId);
-  updateDbStatus();
-  await saveToDB();
-  showToast('DB 저장 완료','ok');
-}
-function delDbConfig() {
-  if (!confirm('DB 연결을 해제하시겠습니까?\n(로컬 데이터는 유지됩니다)')) return;
-  dbKey=''; dbBinId='';
-  localStorage.removeItem('sd_dbkey'); localStorage.removeItem('sd_binid');
-  updateDbStatus(); closeDbModal(); showToast('연결 해제됨');
-}
+async function saveDbConfig(){}
+function delDbConfig(){}
 function updateDbStatus() {
-  const connected = !!(dbKey && dbBinId);
-  document.getElementById('dbDot').className = 'db-dot'+(connected?' ok':'');
-  document.getElementById('dbLbl').textContent = connected ? '☁️ DB 연결됨' : '☁️ DB 설정';
+  document.getElementById('dbDot').className = 'db-dot ok';
+  document.getElementById('dbLbl').textContent = '☁️ DB 연결됨';
 }
 
 // ── API MODAL ──
@@ -1156,9 +1145,12 @@ function toggleMeeting(id) {
 
 function deleteMeeting(id) {
   const m=meetings.find(x=>x.id===id);
-  if (!m||!confirm(`${m.date} 회의록을 삭제하시겠습니까?`)) return;
+  if (!m||!confirm(m.date+' 회의록을 삭제하시겠습니까?')) return;
   meetings=meetings.filter(x=>x.id!==id);
-  save(); renderDates(); updateAllBadges(); showToast('삭제됨');
+  // Supabase에서 삭제 (feedbacks/status 는 CASCADE)
+  sbFetch('/meetings?id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}}).catch(console.error);
+  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  renderDates(); updateAllBadges(); showToast('삭제됨');
 }
 
 // ══════════════════════════
@@ -1909,12 +1901,11 @@ window.onload = async () => {
   renderNames();updateApiStatus();updateDbStatus();
   document.getElementById('meetingDate').value=new Date().toISOString().slice(0,10);
 
-  // DB에서 데이터 로드
-  if(dbKey&&dbBinId){
+  // Supabase에서 데이터 로드
+  {
     const ok=await loadFromDB();
     if(ok){renderAll();renderNames();}
-  } else if(meetings.length>0){
-    renderAll();
+    else if(meetings.length>0){renderAll();}
   }
   updateAllBadges();
 
@@ -1936,16 +1927,14 @@ window.onload = async () => {
   }
 
   // 60초마다 자동 동기화
-  setInterval(async()=>{
-    if(dbKey&&dbBinId){ await saveToDB(); updateSyncLabel(); }
-  }, 60000);
+  setInterval(async()=>{ await saveToDB(); updateSyncLabel(); }, 60000);
 
   // 동기화 시간 표시 갱신 (매 10초)
   setInterval(updateSyncLabel, 10000);
 
   // 탭 전환 시 최신 데이터 로드
   document.addEventListener('visibilitychange', async()=>{
-    if(document.visibilityState==='visible'&&dbKey&&dbBinId){
+    if(document.visibilityState==='visible'){
       const ok=await loadFromDB();
       if(ok){renderAll();renderNames();}
     }
@@ -1953,10 +1942,7 @@ window.onload = async () => {
 
   // 창 포커스 시 동기화
   window.addEventListener('focus', async()=>{
-    if(dbKey&&dbBinId){
-      const ok=await loadFromDB();
-      if(ok){renderAll();renderNames();}
-    }
+    { const ok=await loadFromDB(); if(ok){renderAll();renderNames();} }
   });
 };
 </script>
