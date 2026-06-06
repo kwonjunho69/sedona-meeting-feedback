@@ -666,7 +666,10 @@ async function sbFetch(path, opts={}) {
     const err = await r.text();
     throw new Error('Supabase ' + r.status + ': ' + err.slice(0,100));
   }
-  return r.status === 204 ? null : r.json();
+  if (r.status === 204) return null;
+  const text = await r.text();
+  if (!text || !text.trim()) return null;
+  return JSON.parse(text);
 }
 
 async function saveToDB() {
