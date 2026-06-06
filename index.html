@@ -1607,7 +1607,14 @@ function addName(){
   save();renderNames();inp.value='';if(ri)ri.value='';showToast('등록됨','ok');
 }
 function delName(i){
+  const deleted = residentNames[i];
   residentNames.splice(i,1);
+  // Supabase에서도 삭제
+  if(deleted){
+    sbFetch('/residents?name=eq.'+encodeURIComponent(resName(deleted)),
+      {method:'DELETE',headers:{'Prefer':'return=minimal'}}
+    ).catch(console.error);
+  }
   save();renderNames();showToast('삭제됨');
 }
 function addBulk(){
