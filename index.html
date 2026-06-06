@@ -641,12 +641,29 @@ async function loadFromDB() {
     const data = await r.json();
     const rec = data.record;
     if (rec?.meetings !== undefined) {
-      meetings = rec.meetings || [];
-      residentNames = rec.residentNames || [];
+      // 로컬과 DB 데이터 병합 (날짜 기준, 둘 다 보존)
+      const dbMeetings = rec.meetings || [];
+      const localDates = new Set(meetings.map(m=>m.date));
+      const dbDates = new Set(dbMeetings.map(m=>m.date));
+      // 로컬에만 있는 것 + DB에 있는 것 병합
+      const merged = [...meetings]; // 로컬 우선 보존
+      dbMeetings.forEach(dm=>{
+        if(!localDates.has(dm.date)) merged.push(dm); // DB에만 있는 날짜 추가
+      });
+      merged.sort((a,b)=>b.date.localeCompare(a.date));
+      meetings = merged;
+
+      // 어르신 명단: DB 우선 (더 많은 쪽)
+      if((rec.residentNames||[]).length >= residentNames.length)
+        residentNames = rec.residentNames.map(r=>typeof r==='string'?{name:r,room:''}:r);
+
       if(rec.users) { users = rec.users; if(!users.find(x=>x.id==='admin')) users.unshift(...DEFAULT_USERS); }
       localStorage.setItem('sd_meetings', JSON.stringify(meetings));
       localStorage.setItem('sd_names',    JSON.stringify(residentNames));
       localStorage.setItem('sd_users',    JSON.stringify(users));
+
+      // 병합된 데이터를 DB에 다시 저장 (동기화)
+      setTimeout(()=>saveToDB(), 500);
     }
     setDbDot('ok');
     setDbStatus(`✅ 동기화 완료 (${new Date().toLocaleTimeString('ko-KR')})`);
