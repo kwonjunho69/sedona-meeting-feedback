@@ -657,9 +657,10 @@ function loadStorage() {
 const JSONBIN = 'https://api.jsonbin.io/v3/b';
 
 async function sbFetch(path, opts={}) {
+  const {headers: extraHdrs, ...restOpts} = opts;
   const r = await fetch(SB_REST + path, {
-    headers: {...SB_HDR, ...(opts.headers||{})},
-    ...opts
+    ...restOpts,
+    headers: {...SB_HDR, ...(extraHdrs||{})}
   });
   if (!r.ok) {
     const err = await r.text();
