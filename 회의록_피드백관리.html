@@ -1894,7 +1894,8 @@ function showToast(msg,type=''){
 // ── INIT ──
 window.onload = async () => {
   loadStorage();
-  // URL 해시에서 키 자동 적용 (#k=DB키&b=BinID&api=Gemini키)
+
+  // URL 해시에서 키 자동 적용
   try {
     const hash=new URLSearchParams(window.location.hash.slice(1));
     let changed=false;
@@ -1904,25 +1905,29 @@ window.onload = async () => {
     if(hash.get('m')){modelId=hash.get('m');localStorage.setItem('sd_model',modelId);}
     if(changed){history.replaceState(null,'',window.location.pathname);}
   }catch(e){}
+
   renderNames();updateApiStatus();updateDbStatus();
   document.getElementById('meetingDate').value=new Date().toISOString().slice(0,10);
-  if(dbKey&&dbBinId){const ok=await loadFromDB();if(ok){renderAll();renderNames();return;}}
-  if(meetings.length>0)renderAll();
+
+  // DB에서 데이터 로드
+  if(dbKey&&dbBinId){
+    const ok=await loadFromDB();
+    if(ok){renderAll();renderNames();}
+  } else if(meetings.length>0){
+    renderAll();
+  }
   updateAllBadges();
-  // 세션 복원 - F5 새로고침 시 로그인 유지
+
+  // ── 세션 복원 (항상 실행) ──
   const savedSession = sessionStorage.getItem('sd_user');
   if(savedSession){
     try{
       const su = JSON.parse(savedSession);
-      // 사용자 목록에서 확인 (admin은 항상 허용)
       const u = su.id==='admin'
-        ? {id:'admin',name:'관리자',role:'admin'}
+        ? {id:'admin',name:'관리자',role:'admin',password:'1234'}
         : users.find(x=>x.id===su.id);
-      if(u){
-        loginSuccess(u);
-      } else {
-        document.getElementById('loginOverlay').style.display='flex';
-      }
+      if(u){ loginSuccess(u); }
+      else { sessionStorage.removeItem('sd_user'); document.getElementById('loginOverlay').style.display='flex'; }
     }catch(e){
       document.getElementById('loginOverlay').style.display='flex';
     }
@@ -1932,28 +1937,25 @@ window.onload = async () => {
 
   // 60초마다 자동 동기화
   setInterval(async()=>{
-    if(dbKey&&dbBinId){
-      await saveToDB();
-      updateSyncLabel();
-    }
+    if(dbKey&&dbBinId){ await saveToDB(); updateSyncLabel(); }
   }, 60000);
 
   // 동기화 시간 표시 갱신 (매 10초)
   setInterval(updateSyncLabel, 10000);
 
-  // 탭/창 전환 시 DB에서 최신 데이터 로드
+  // 탭 전환 시 최신 데이터 로드
   document.addEventListener('visibilitychange', async()=>{
-    if(document.visibilityState==='visible' && dbKey && dbBinId){
-      const ok = await loadFromDB();
-      if(ok){ renderAll(); renderNames(); }
+    if(document.visibilityState==='visible'&&dbKey&&dbBinId){
+      const ok=await loadFromDB();
+      if(ok){renderAll();renderNames();}
     }
   });
 
   // 창 포커스 시 동기화
   window.addEventListener('focus', async()=>{
     if(dbKey&&dbBinId){
-      const ok = await loadFromDB();
-      if(ok){ renderAll(); renderNames(); }
+      const ok=await loadFromDB();
+      if(ok){renderAll();renderNames();}
     }
   });
 };
