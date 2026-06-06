@@ -219,6 +219,10 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
       <div class="db-dot" id="dbDot"></div>
       <span id="dbLbl">☁️ DB 설정</span>
     </button>
+    <button class="api-btn" onclick="manualSync()" id="syncBtn" title="지금 동기화">
+      <span id="syncIcon">🔄</span>
+      <span id="syncTime" style="font-size:11px">동기화</span>
+    </button>
     <div id="userInfo" style="display:none;align-items:center;gap:8px;color:#fff;font-size:12px">
       <span>👤 <span id="userNameDisp"></span></span>
       <button class="api-btn" onclick="doLogout()" style="padding:4px 10px;font-size:11px">로그아웃</button>
@@ -673,14 +677,50 @@ const JSONBIN = 'https://api.jsonbin.io/v3/b';
 async function saveToDB() {
   if (!dbKey || !dbBinId) return;
   setDbDot('sync');
+  document.getElementById('syncIcon').textContent = '⏳';
   try {
     const r = await fetch(`${JSONBIN}/${dbBinId}`, {
       method:'PUT',
       headers:{'Content-Type':'application/json','X-Master-Key':dbKey},
       body: JSON.stringify({ meetings, residentNames, users, updatedAt: new Date().toISOString() })
     });
-    setDbDot(r.ok ? 'ok' : 'err');
-  } catch(e) { setDbDot('err'); }
+    if (r.ok) {
+      setDbDot('ok');
+      lastSyncTime = new Date();
+      updateSyncLabel();
+    } else {
+      setDbDot('err');
+      document.getElementById('syncIcon').textContent = '❌';
+      // 10초 후 재시도
+      setTimeout(()=>saveToDB(), 10000);
+    }
+  } catch(e) {
+    setDbDot('err');
+    document.getElementById('syncIcon').textContent = '❌';
+    setTimeout(()=>saveToDB(), 10000);
+  }
+}
+
+let lastSyncTime = null;
+function updateSyncLabel(){
+  const el = document.getElementById('syncTime');
+  const icon = document.getElementById('syncIcon');
+  if(!el) return;
+  if(!lastSyncTime){ el.textContent='동기화'; return; }
+  icon.textContent = '✅';
+  const diff = Math.floor((new Date()-lastSyncTime)/1000);
+  if(diff < 60) el.textContent = diff+'초 전';
+  else if(diff < 3600) el.textContent = Math.floor(diff/60)+'분 전';
+  else el.textContent = '방금';
+}
+
+async function manualSync(){
+  const btn = document.getElementById('syncBtn');
+  if(btn) btn.style.opacity='0.6';
+  await saveToDB();
+  const ok = await loadFromDB();
+  if(ok){ renderAll(); renderNames(); showToast('동기화 완료','ok'); }
+  if(btn) btn.style.opacity='1';
 }
 
 async function loadFromDB() {
@@ -1855,6 +1895,33 @@ window.onload = async () => {
   updateAllBadges();
   // 로그인 오버레이는 항상 표시 (로그인 후 사라짐)
   document.getElementById('loginOverlay').style.display='flex';
+
+  // 60초마다 자동 동기화
+  setInterval(async()=>{
+    if(dbKey&&dbBinId){
+      await saveToDB();
+      updateSyncLabel();
+    }
+  }, 60000);
+
+  // 동기화 시간 표시 갱신 (매 10초)
+  setInterval(updateSyncLabel, 10000);
+
+  // 탭/창 전환 시 DB에서 최신 데이터 로드
+  document.addEventListener('visibilitychange', async()=>{
+    if(document.visibilityState==='visible' && dbKey && dbBinId){
+      const ok = await loadFromDB();
+      if(ok){ renderAll(); renderNames(); }
+    }
+  });
+
+  // 창 포커스 시 동기화
+  window.addEventListener('focus', async()=>{
+    if(dbKey&&dbBinId){
+      const ok = await loadFromDB();
+      if(ok){ renderAll(); renderNames(); }
+    }
+  });
 };
 </script>
 </body>
