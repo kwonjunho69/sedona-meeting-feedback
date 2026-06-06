@@ -587,6 +587,8 @@ let meetings = [], residentNames = [];
 let apiKey = '', modelId = 'gemini-2.5-flash';
 let dbKey = '', dbBinId = '';
 let teamFilt = { nursing:'all', welfare:'all' };
+let currentTab = 'input'; // 현재 활성 탭 추적
+let openMeetingIds = new Set(); // 열린 회의록 카드 추적
 let floorFilt = { nursing: new Set(['all']), welfare: new Set(['all']) };
 let resviewFilt = 'all';
 let pendingNote = null; // { meetingId, resident, teamDept }
@@ -1074,7 +1076,7 @@ function renderDates() {
         </div>
         <button class="btn btn-outline btn-sm" style="margin-left:8px" onclick="event.stopPropagation();deleteMeeting('${m.id}')">🗑</button>
       </div>
-      <div class="meeting-body" id="mb-${m.id}">
+      <div class="meeting-body ${openMeetingIds.has(m.id)?'open':''}" id="mb-${m.id}">
         <div class="meeting-summary">${esc(m.summary)}
           <button onclick="event.stopPropagation();openSummaryEdit('${m.id}')" style="float:right;background:none;border:none;cursor:pointer;color:var(--g400);font-size:12px;margin-left:8px" title="요약 수정">✏️ 수정</button>
         </div>
@@ -1148,6 +1150,8 @@ function toggleDeptBlock(id) {
 function toggleMeeting(id) {
   const el=document.getElementById('mb-'+id);
   el.classList.toggle('open');
+  if(el.classList.contains('open')) openMeetingIds.add(id);
+  else openMeetingIds.delete(id);
 }
 
 function deleteMeeting(id) {
@@ -1559,9 +1563,19 @@ function updateAllBadges() {
 function renderAll() {
   renderDates(); renderTeam('nursing'); renderTeam('welfare'); renderResview(); updateAllBadges();
 }
+function renderCurrentTab() {
+  // 현재 활성 탭만 다시 렌더 (상태 유지)
+  updateAllBadges();
+  if(currentTab==='dates') renderDates();
+  else if(currentTab==='nursing') renderTeam('nursing');
+  else if(currentTab==='welfare') renderTeam('welfare');
+  else if(currentTab==='resview') renderResview();
+  else { renderDates(); renderTeam('nursing'); renderTeam('welfare'); renderResview(); }
+}
 
 // ── TABS ──
 function switchTab(name) {
+  currentTab = name;
   document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
@@ -1691,6 +1705,7 @@ function doLogin(){
 }
 function loginSuccess(u){
   currentUser=u;
+  sessionStorage.setItem('sd_user', JSON.stringify({id:u.id,name:u.name,role:u.role}));
   document.getElementById('loginOverlay').style.display='none';
   document.getElementById('userInfo').style.display='flex';
   document.getElementById('userNameDisp').textContent=u.name+'님';
@@ -1701,6 +1716,7 @@ function loginSuccess(u){
 function doLogout(){
   if(!confirm('로그아웃 하시겠습니까?'))return;
   currentUser=null;
+  sessionStorage.removeItem('sd_user');
   document.getElementById('loginOverlay').style.display='flex';
   document.getElementById('userInfo').style.display='none';
   document.getElementById('adminTab').style.display='none';
@@ -1819,7 +1835,7 @@ function saveFeedbackEdit(){
   f.text = newText;
 
   closeFbEditModal();
-  save(); renderAll();
+  save(); renderCurrentTab();
   showToast('피드백 수정됨','ok');
 }
 
@@ -1830,7 +1846,7 @@ function deleteFeedback(){
   if(!m) return;
   m.feedbacks = m.feedbacks.filter(x=>x.id!==editTarget.feedbackId);
   closeFbEditModal();
-  save(); renderAll();
+  save(); renderCurrentTab();
   showToast('삭제됨');
 }
 
@@ -1893,8 +1909,26 @@ window.onload = async () => {
   if(dbKey&&dbBinId){const ok=await loadFromDB();if(ok){renderAll();renderNames();return;}}
   if(meetings.length>0)renderAll();
   updateAllBadges();
-  // 로그인 오버레이는 항상 표시 (로그인 후 사라짐)
-  document.getElementById('loginOverlay').style.display='flex';
+  // 세션 복원 - F5 새로고침 시 로그인 유지
+  const savedSession = sessionStorage.getItem('sd_user');
+  if(savedSession){
+    try{
+      const su = JSON.parse(savedSession);
+      // 사용자 목록에서 확인 (admin은 항상 허용)
+      const u = su.id==='admin'
+        ? {id:'admin',name:'관리자',role:'admin'}
+        : users.find(x=>x.id===su.id);
+      if(u){
+        loginSuccess(u);
+      } else {
+        document.getElementById('loginOverlay').style.display='flex';
+      }
+    }catch(e){
+      document.getElementById('loginOverlay').style.display='flex';
+    }
+  } else {
+    document.getElementById('loginOverlay').style.display='flex';
+  }
 
   // 60초마다 자동 동기화
   setInterval(async()=>{
