@@ -729,11 +729,15 @@ async function saveToDB() {
       });
     }
 
-    // 4. 어르신 명단 upsert
+    // 4. 어르신 명단 동기화 (전체 삭제 후 재삽입 → 로컬과 DB 항상 일치)
+    await sbFetch('/residents?id=gt.0', {
+      method:'DELETE',
+      headers:{'Prefer':'return=minimal'}
+    });
     if (residentNames.length > 0) {
-      await sbFetch('/residents?on_conflict=name', {
+      await sbFetch('/residents', {
         method:'POST',
-        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        headers:{'Prefer':'return=minimal'},
         body: JSON.stringify(residentNames.map(r=>({name:resName(r),room:resRoom(r)})))
       });
     }
@@ -1607,14 +1611,7 @@ function addName(){
   save();renderNames();inp.value='';if(ri)ri.value='';showToast('등록됨','ok');
 }
 function delName(i){
-  const deleted = residentNames[i];
   residentNames.splice(i,1);
-  // Supabase에서도 삭제
-  if(deleted){
-    sbFetch('/residents?name=eq.'+encodeURIComponent(resName(deleted)),
-      {method:'DELETE',headers:{'Prefer':'return=minimal'}}
-    ).catch(console.error);
-  }
   save();renderNames();showToast('삭제됨');
 }
 function addBulk(){
