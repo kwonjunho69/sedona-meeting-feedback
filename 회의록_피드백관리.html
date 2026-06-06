@@ -219,6 +219,10 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
       <div class="db-dot" id="dbDot"></div>
       <span id="dbLbl">☁️ DB 설정</span>
     </button>
+    <div id="userInfo" style="display:none;align-items:center;gap:8px;color:#fff;font-size:12px">
+      <span>👤 <span id="userNameDisp"></span></span>
+      <button class="api-btn" onclick="doLogout()" style="padding:4px 10px;font-size:11px">로그아웃</button>
+    </div>
     <button class="api-btn" onclick="openApiModal()">
       <div class="api-dot" id="apiDot"></div>
       <span id="apiLbl">API 키 설정</span>
@@ -233,16 +237,14 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   <div class="ntab" onclick="switchTab('welfare')">🤝 복지팀 <span class="nbadge" id="welfareBadge" style="display:none"></span></div>
   <div class="ntab" onclick="switchTab('resview')">👤 어르신별 <span class="nbadge" id="resviewBadge" style="display:none"></span></div>
   <div class="ntab" onclick="switchTab('residents')">👥 어르신 명단</div>
+  <div class="ntab" id="adminTab" onclick="switchTab('admin')" style="display:none">⚙️ 사용자 관리</div>
 </div>
 
 <div class="main">
 
 <!-- ══ TAB1: 입력 ══ -->
 <div class="tc active" id="tab-input">
-  <div class="info-box">
-    <strong>🤖 AI 에이전트 분석:</strong> 날짜를 선택하고 회의록을 입력하면 Gemini AI가 간호·복지 피드백을 어르신별로 자동 분류합니다.<br>
-    API 키: <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary);font-weight:700">aistudio.google.com/apikey</a> (무료)
-  </div>
+
   <div class="panel">
     <div class="ptitle">📅 회의 일자</div>
     <input type="date" id="meetingDate" style="width:180px">
@@ -465,6 +467,50 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   </div>
 </div>
 
+<!-- ══ TAB7: 사용자 관리 (관리자 전용) ══ -->
+<div class="tc" id="tab-admin">
+  <div class="info-box" style="background:#fef3c7;border-color:#fcd34d;color:#92400e"><strong>⚙️ 관리자 전용</strong> — 사용자 계정을 추가·삭제하고 비밀번호를 관리합니다.</div>
+  <div class="panel">
+    <div class="ptitle">👥 사용자 목록 <span id="userCount" style="font-weight:400;color:var(--g500)"></span></div>
+    <div class="row" style="margin-bottom:10px">
+      <input type="text" id="newUserId" placeholder="아이디" maxlength="20" style="flex:1">
+      <input type="text" id="newUserName" placeholder="이름 (표시용)" maxlength="10" style="flex:1">
+      <input type="password" id="newUserPw" placeholder="비밀번호" maxlength="20" style="flex:1">
+      <button class="btn btn-primary btn-sm" onclick="addUser()">➕ 추가</button>
+    </div>
+    <div id="userList"></div>
+  </div>
+  <div class="panel">
+    <div class="ptitle">🔑 내 비밀번호 변경</div>
+    <div class="row">
+      <input type="password" id="curPw" placeholder="현재 비밀번호" style="flex:1">
+      <input type="password" id="newPw" placeholder="새 비밀번호" style="flex:1">
+      <button class="btn btn-outline btn-sm" onclick="changePw()">변경</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 로그인 오버레이 ══ -->
+<div id="loginOverlay" style="position:fixed;inset:0;background:linear-gradient(135deg,#1e40af,#2563eb);z-index:9999;display:flex;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:36px 32px;max-width:380px;width:95%;box-shadow:0 20px 40px rgba(0,0,0,.3)">
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="font-size:40px;margin-bottom:8px">🏥</div>
+      <h2 style="font-size:18px;font-weight:800;color:#1e40af">세도나 시니어타운</h2>
+      <p style="font-size:13px;color:var(--g500);margin-top:4px">회의록 피드백 관리 시스템</p>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;color:var(--g600);margin-bottom:5px">아이디</div>
+      <input type="text" id="loginId" placeholder="아이디 입력" style="width:100%" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:600;color:var(--g600);margin-bottom:5px">비밀번호</div>
+      <input type="password" id="loginPw" placeholder="비밀번호 입력" style="width:100%" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" onclick="doLogin()">로그인</button>
+    <div id="loginErr" style="color:var(--danger);font-size:12px;text-align:center;margin-top:10px;display:none">아이디 또는 비밀번호가 올바르지 않습니다.</div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -503,7 +549,7 @@ function isGroupDone(meeting, resident, dept) {
 }
 function getGroupNote(meeting, resident, dept) {
   const v = getStatusVal(meeting, resident, dept);
-  if (typeof v === 'object' && v.done) return { note: v.note||'', resolvedAt: v.resolvedAt||'' };
+  if (typeof v === 'object' && v.done) return { note: v.note||'', resolvedAt: v.resolvedAt||'', resolvedBy: v.resolvedBy||'' };
   return null;
 }
 function setStatus(meeting, resident, dept, done, note='') {
@@ -522,8 +568,18 @@ function setStatus(meeting, resident, dept, done, note='') {
 function save() {
   localStorage.setItem('sd_meetings', JSON.stringify(meetings));
   localStorage.setItem('sd_names', JSON.stringify(residentNames));
+  localStorage.setItem('sd_users', JSON.stringify(users));
   if (dbKey && dbBinId) saveToDB();
 }
+// ── 사용자 관리 ──
+// users = [{id, name, password, role}]  role: 'admin'|'user'
+let users = [];
+let currentUser = null; // { id, name, role }
+
+const DEFAULT_USERS = [
+  { id:'admin', name:'관리자', password:'1234', role:'admin' }
+];
+
 // ── 자동 연결 기본값 (세도나 시니어타운) ──
 const _DEF_API = 'AQ.Ab8RN6Ltf4-xNoimuufmJTwfwy5QGk_kqqTfNU4nEduTYboIQ';
 const _DEF_DBK = '$2a$10$5tm3Y7mGcyqS9j3SIyb9bOXvFWT865seVduIqcxjtsGdZO7HtfkiC';
@@ -543,6 +599,10 @@ function loadStorage() {
     if(!localStorage.getItem('sd_api'))   localStorage.setItem('sd_api',   apiKey);
     if(!localStorage.getItem('sd_dbkey')) localStorage.setItem('sd_dbkey', dbKey);
     if(!localStorage.getItem('sd_binid')) localStorage.setItem('sd_binid', dbBinId);
+    // 사용자 목록 로드
+    const u = localStorage.getItem('sd_users');
+    users = u ? JSON.parse(u) : [...DEFAULT_USERS];
+    if(!users.find(x=>x.id==='admin')) users.unshift(...DEFAULT_USERS); // admin 항상 유지
     // 구버전(string[]) → 신버전({name,room}[]) 마이그레이션
     residentNames = residentNames.map(r=>typeof r==='string'?{name:r,room:''}:r);
   } catch(e) {}
@@ -558,7 +618,7 @@ async function saveToDB() {
     const r = await fetch(`${JSONBIN}/${dbBinId}`, {
       method:'PUT',
       headers:{'Content-Type':'application/json','X-Master-Key':dbKey},
-      body: JSON.stringify({ meetings, residentNames, updatedAt: new Date().toISOString() })
+      body: JSON.stringify({ meetings, residentNames, users, updatedAt: new Date().toISOString() })
     });
     setDbDot(r.ok ? 'ok' : 'err');
   } catch(e) { setDbDot('err'); }
@@ -583,8 +643,10 @@ async function loadFromDB() {
     if (rec?.meetings !== undefined) {
       meetings = rec.meetings || [];
       residentNames = rec.residentNames || [];
+      if(rec.users) { users = rec.users; if(!users.find(x=>x.id==='admin')) users.unshift(...DEFAULT_USERS); }
       localStorage.setItem('sd_meetings', JSON.stringify(meetings));
       localStorage.setItem('sd_names',    JSON.stringify(residentNames));
+      localStorage.setItem('sd_users',    JSON.stringify(users));
     }
     setDbDot('ok');
     setDbStatus(`✅ 동기화 완료 (${new Date().toLocaleTimeString('ko-KR')})`);
@@ -694,6 +756,7 @@ function updateApiStatus() {
 
 // ── 처리 내용 모달 ──
 function toggleGroup(meetingId, residentEnc, teamDept) {
+  if(!currentUser){showToast('로그인 후 이용하세요','err');return;}
   const m = meetings.find(x=>x.id===meetingId);
   if (!m) return;
   const resident = decodeURIComponent(residentEnc);
@@ -719,7 +782,8 @@ function confirmNote() {
   const note = document.getElementById('noteInput').value.trim();
   const m = meetings.find(x=>x.id===pendingNote.meetingId);
   if (!m) return;
-  setStatus(m, pendingNote.resident, pendingNote.teamDept, true, note);
+  const resolvedBy = currentUser ? currentUser.name : '';
+  setStatus(m, pendingNote.resident, pendingNote.teamDept, true, note, resolvedBy);
   pendingNote = null;
   closeNoteModal();
   save(); renderAll(); showToast('처리완료 저장됨','ok');
@@ -946,7 +1010,7 @@ function renderDeptBlock(m, resident, teamDept, fbs) {
         </div>`).join('')}
       </div>
       ${noteInfo?`<div class="note-box">
-        <div class="note-lbl">✅ 처리 내용 <span class="note-date">${noteInfo.resolvedAt}</span></div>
+        <div class="note-lbl">✅ 처리 내용 <span class="note-date">${noteInfo.resolvedAt}${noteInfo.resolvedBy?' · '+esc(noteInfo.resolvedBy):''}</span></div>
         ${noteInfo.note ? esc(noteInfo.note) : '<span style="color:var(--g400)">내용 없음</span>'}
       </div>`:''}
     </div>
@@ -1084,7 +1148,7 @@ function renderTeam(team) {
                   <span>${esc(f.text)}</span>
                 </div>`).join('')}
                 ${ni?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 10px;font-size:12px;color:#166534;margin-top:6px;line-height:1.6">
-                  <span style="font-weight:700">✅ 처리내용</span> <span style="color:var(--g400);font-size:11px">${ni.resolvedAt}</span><br>
+                  <span style="font-weight:700">✅ 처리내용</span> <span style="color:var(--g400);font-size:11px">${ni.resolvedAt}${ni.resolvedBy?' · '+esc(ni.resolvedBy):''}</span><br>
                   ${ni.note?esc(ni.note):'<span style="color:var(--g400)">내용 없음</span>'}
                 </div>`:''}
               </div>
@@ -1164,6 +1228,7 @@ function markAllDone(team) {
 }
 
 function markFloorDone(team, floor){
+  if(!currentUser){showToast('로그인 후 이용하세요','err');return;}
   if(!confirm(`${floor==='?'?'호실 미지정':floor+'층'} 미처리 항목을 모두 처리완료로 표시하시겠습니까?`))return;
   let cnt=0;
   meetings.forEach(m=>{
@@ -1381,12 +1446,13 @@ function switchTab(name) {
   document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
-  const idx={input:0,dates:1,nursing:2,welfare:3,resview:4,residents:5};
+  const idx={input:0,dates:1,nursing:2,welfare:3,resview:4,residents:5,admin:6};
   document.querySelectorAll('.ntab')[idx[name]].classList.add('active');
   if(name==='dates') renderDates();
   else if(name==='nursing') renderTeam('nursing');
   else if(name==='welfare') renderTeam('welfare');
   else if(name==='resview') renderResview();
+  else if(name==='admin') renderUserList();
 }
 
 // ── NAMES ──
@@ -1515,6 +1581,8 @@ window.onload = async () => {
   if(dbKey&&dbBinId){const ok=await loadFromDB();if(ok){renderAll();renderNames();return;}}
   if(meetings.length>0)renderAll();
   updateAllBadges();
+  // 로그인 오버레이는 항상 표시 (로그인 후 사라짐)
+  document.getElementById('loginOverlay').style.display='flex';
 };
 </script>
 </body>
