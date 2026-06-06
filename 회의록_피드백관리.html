@@ -511,6 +511,65 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   </div>
 </div>
 
+<!-- ══ 피드백 편집 모달 ══ -->
+<div class="modal-ov" id="fbEditModal">
+  <div class="modal" style="max-width:500px">
+    <h2>✏️ 피드백 수정</h2>
+    <div style="margin-top:12px">
+      <div style="font-size:12px;font-weight:600;color:var(--g600);margin-bottom:5px">어르신</div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="fbEditResident" placeholder="어르신 이름" style="flex:1" list="residentDatalist">
+        <datalist id="residentDatalist"></datalist>
+      </div>
+    </div>
+    <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--g600);margin-bottom:5px">담당팀</div>
+        <select id="fbEditDept" style="width:100%">
+          <option value="nursing">💉 간호팀</option>
+          <option value="welfare">🤝 복지팀</option>
+          <option value="both">💉🤝 간호+복지</option>
+        </select>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--g600);margin-bottom:5px">우선순위</div>
+        <select id="fbEditPriority" style="width:100%">
+          <option value="normal">일반</option>
+          <option value="high">⚠️ 즉시처리</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      <div style="font-size:12px;font-weight:600;color:var(--g600);margin-bottom:5px">피드백 내용</div>
+      <textarea id="fbEditText" style="min-height:100px"></textarea>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn btn-primary btn-sm" onclick="saveFeedbackEdit()">💾 저장</button>
+      <button class="btn btn-outline btn-sm" onclick="closeFbEditModal()">취소</button>
+      <button class="btn btn-outline btn-sm" style="margin-left:auto;color:var(--danger)" onclick="deleteFeedback()">🗑 삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 요약 편집 모달 ══ -->
+<div class="modal-ov" id="summaryEditModal">
+  <div class="modal" style="max-width:500px">
+    <h2>✏️ 회의 요약 수정</h2>
+    <div style="margin-top:12px">
+      <div style="font-size:12px;font-weight:600;color:var(--g600);margin-bottom:5px">요약</div>
+      <textarea id="summaryEditText" style="min-height:90px"></textarea>
+    </div>
+    <div style="margin-top:10px">
+      <div style="font-size:12px;font-weight:600;color:var(--g600);margin-bottom:5px">주요사항 (줄바꿈으로 구분)</div>
+      <textarea id="summaryEditIssues" style="min-height:70px" placeholder="주요사항1&#10;주요사항2"></textarea>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn btn-primary btn-sm" onclick="saveSummaryEdit()">💾 저장</button>
+      <button class="btn btn-outline btn-sm" onclick="closeSummaryEditModal()">취소</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -976,7 +1035,9 @@ function renderDates() {
         <button class="btn btn-outline btn-sm" style="margin-left:8px" onclick="event.stopPropagation();deleteMeeting('${m.id}')">🗑</button>
       </div>
       <div class="meeting-body" id="mb-${m.id}">
-        <div class="meeting-summary">${esc(m.summary)}</div>
+        <div class="meeting-summary">${esc(m.summary)}
+          <button onclick="event.stopPropagation();openSummaryEdit('${m.id}')" style="float:right;background:none;border:none;cursor:pointer;color:var(--g400);font-size:12px;margin-left:8px" title="요약 수정">✏️ 수정</button>
+        </div>
         ${m.keyIssues?.length?`<div class="key-issues">${m.keyIssues.map(k=>`<span class="ki-chip">${esc(k)}</span>`).join('')}</div>`:''}
         ${renderMeetingResidents(m)}
       </div>
@@ -1024,6 +1085,7 @@ function renderDeptBlock(m, resident, teamDept, fbs) {
         ${fbs.map(f=>`<div class="fb-row">
           ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
           <span class="fb-text">${esc(f.text)}</span>
+          <button onclick="openFeedbackEdit('${m.id}','${f.id}')" style="margin-left:6px;flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--g400);font-size:13px;padding:0 2px" title="편집">✏️</button>
         </div>`).join('')}
       </div>
       ${noteInfo?`<div class="note-box">
@@ -1662,6 +1724,109 @@ function changePw(){
   u.password=nw;save();showToast('비밀번호 변경됨','ok');
   document.getElementById('curPw').value='';
   document.getElementById('newPw').value='';
+}
+
+
+// ══════════════════════════
+// 피드백 편집
+// ══════════════════════════
+let editTarget = null; // {meetingId, feedbackId}
+let summaryEditTarget = null; // meetingId
+
+function openFeedbackEdit(meetingId, feedbackId){
+  const m = meetings.find(x=>x.id===meetingId);
+  if(!m) return;
+  const f = m.feedbacks.find(x=>x.id===feedbackId);
+  if(!f) return;
+  editTarget = {meetingId, feedbackId};
+
+  // 어르신 datalist 갱신
+  const dl = document.getElementById('residentDatalist');
+  if(dl) dl.innerHTML = residentNames.map(r=>`<option value="${resName(r)}">`).join('');
+
+  document.getElementById('fbEditResident').value = f.resident;
+  document.getElementById('fbEditDept').value = f.dept || 'nursing';
+  document.getElementById('fbEditPriority').value = f.priority || 'normal';
+  document.getElementById('fbEditText').value = f.text;
+  document.getElementById('fbEditModal').classList.add('open');
+  setTimeout(()=>document.getElementById('fbEditText').focus(), 100);
+}
+
+function saveFeedbackEdit(){
+  if(!editTarget) return;
+  const m = meetings.find(x=>x.id===editTarget.meetingId);
+  if(!m) return;
+  const f = m.feedbacks.find(x=>x.id===editTarget.feedbackId);
+  if(!f) return;
+
+  const newResident = document.getElementById('fbEditResident').value.trim();
+  const newDept = document.getElementById('fbEditDept').value;
+  const newPriority = document.getElementById('fbEditPriority').value;
+  const newText = document.getElementById('fbEditText').value.trim();
+
+  if(!newResident || !newText){ showToast('어르신 이름과 내용을 입력하세요','err'); return; }
+
+  // 어르신이 변경된 경우 처리상태도 이전
+  if(f.resident !== newResident){
+    // 기존 어르신+팀 상태 제거
+    const oldKey = statusKey(f.resident, f.dept);
+    if(m.status) delete m.status[oldKey];
+  }
+
+  f.resident = newResident;
+  f.dept = newDept;
+  f.priority = newPriority;
+  f.text = newText;
+
+  closeFbEditModal();
+  save(); renderAll();
+  showToast('피드백 수정됨','ok');
+}
+
+function deleteFeedback(){
+  if(!editTarget) return;
+  if(!confirm('이 피드백 항목을 삭제하시겠습니까?')) return;
+  const m = meetings.find(x=>x.id===editTarget.meetingId);
+  if(!m) return;
+  m.feedbacks = m.feedbacks.filter(x=>x.id!==editTarget.feedbackId);
+  closeFbEditModal();
+  save(); renderAll();
+  showToast('삭제됨');
+}
+
+function closeFbEditModal(){
+  document.getElementById('fbEditModal').classList.remove('open');
+  editTarget = null;
+}
+
+// ══════════════════════════
+// 요약 편집
+// ══════════════════════════
+function openSummaryEdit(meetingId){
+  const m = meetings.find(x=>x.id===meetingId);
+  if(!m) return;
+  summaryEditTarget = meetingId;
+  document.getElementById('summaryEditText').value = m.summary || '';
+  document.getElementById('summaryEditIssues').value = (m.keyIssues||[]).join('\n');
+  document.getElementById('summaryEditModal').classList.add('open');
+  setTimeout(()=>document.getElementById('summaryEditText').focus(), 100);
+}
+
+function saveSummaryEdit(){
+  if(!summaryEditTarget) return;
+  const m = meetings.find(x=>x.id===summaryEditTarget);
+  if(!m) return;
+  m.summary = document.getElementById('summaryEditText').value.trim();
+  m.keyIssues = document.getElementById('summaryEditIssues').value
+    .split('\n').map(s=>s.trim()).filter(Boolean);
+  closeSummaryEditModal();
+  save(); renderDates();
+  showToast('요약 수정됨','ok');
+}
+
+function closeSummaryEditModal(){
+  document.getElementById('summaryEditModal').classList.remove('open');
+  summaryEditTarget = null;
 }
 
 function showToast(msg,type=''){
