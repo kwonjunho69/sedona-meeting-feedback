@@ -1405,7 +1405,11 @@ function renderDates() {
           <span class="stat-chip d">${mDone}완료</span>
           ${mPend>0?`<span class="stat-chip p">${mPend}미처리</span>`:''}
         </div>
-        <button class="btn btn-outline btn-sm" style="margin-left:8px" onclick="event.stopPropagation();deleteMeeting('${m.id}')">🗑</button>
+        <button onclick="event.stopPropagation();openAddFbModal('${m.id}')"
+          style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:8px">
+          ➕ 피드백 추가
+        </button>
+        <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="event.stopPropagation();deleteMeeting('${m.id}')">🗑</button>
       </div>
       <div class="meeting-body ${openMeetingIds.has(m.id)?'open':''}" id="mb-${m.id}">
         <div class="meeting-summary">${esc(m.summary)}
@@ -1413,12 +1417,7 @@ function renderDates() {
         </div>
         ${m.keyIssues?.length?`<div class="key-issues">${m.keyIssues.map(k=>`<span class="ki-chip">${esc(k)}</span>`).join('')}</div>`:''}
         ${renderMeetingResidents(m)}
-        <div style="padding:10px 14px 6px;border-top:1px dashed var(--g200);margin-top:8px">
-          <button onclick="event.stopPropagation();openAddFbModal('${m.id}')"
-            style="background:var(--primary-light);color:var(--primary);border:1px dashed var(--primary);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;width:100%;text-align:center">
-            ➕ 어르신 피드백 추가
-          </button>
-        </div>
+
       </div>
     </div>`;
   }).join('');
