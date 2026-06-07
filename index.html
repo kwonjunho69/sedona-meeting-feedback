@@ -105,10 +105,26 @@ textarea{width:100%;resize:vertical;line-height:1.65}
 
 /* 피드백 항목 */
 .fb-list{padding:0}
-.fb-row{padding:10px 14px;border-bottom:1px solid var(--g100);display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.6;color:var(--g700)}
+.fb-row{padding:10px 14px;border-bottom:1px solid var(--g100);display:flex;flex-direction:column;gap:4px;font-size:13px;line-height:1.6;color:var(--g700)}
 .fb-row:last-child{border-bottom:none}
-.pri-badge{font-size:11px;padding:2px 7px;border-radius:6px;font-weight:700;background:var(--danger-light);color:var(--danger);flex-shrink:0;margin-top:1px}
+.fb-row-done{background:#f0fdf4}
+.fb-row-top{display:flex;align-items:flex-start;gap:8px}
+.pri-badge{font-size:11px;padding:2px 7px;border-radius:6px;font-weight:700;background:var(--danger-light);color:var(--danger);flex-shrink:0;margin-top:2px}
 .fb-text{flex:1}
+.fb-text-done{text-decoration:line-through;color:var(--g400)}
+.fb-check{cursor:pointer;width:16px;height:16px;flex-shrink:0;margin-top:3px;accent-color:var(--success)}
+/* 처리이력 */
+.fb-logs{margin:4px 0 2px 24px;display:flex;flex-direction:column;gap:3px}
+.fb-log-entry{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 10px;background:#f8fafc;border-radius:6px;border-left:3px solid var(--g300);font-size:12px}
+.fb-log-entry.log-done-entry{border-left-color:var(--success);background:#f0fdf4}
+.fb-log-entry.log-add-entry{border-left-color:#60a5fa;background:#eff6ff}
+.log-badge{font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;flex-shrink:0}
+.log-badge-done{background:#dcfce7;color:#166534}
+.log-badge-add{background:#dbeafe;color:#1e40af}
+.log-who{font-weight:700;color:var(--g700)}
+.log-at{color:var(--g400);font-size:11px}
+.log-note-txt{color:var(--g600);width:100%;margin-top:1px;line-height:1.5}
+.fb-actions{display:flex;gap:4px;margin-left:auto;flex-shrink:0}
 
 /* 팀 탭 */
 .team-res-card{background:#fff;border-radius:var(--r);box-shadow:var(--sh);margin-bottom:10px;overflow:hidden}
@@ -460,13 +476,14 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 
 <!-- ══ 처리 내용 입력 Modal ══ -->
 <div class="modal-ov" id="noteModal">
-  <div class="modal" style="max-width:440px">
-    <h2>✅ 처리 완료 내용 입력</h2>
+  <div class="modal" style="max-width:460px">
+    <h2 id="noteModalTitle">✅ 처리완료 등록</h2>
     <div class="note-modal-info" id="noteModalInfo"></div>
-    <div style="font-size:12px;font-weight:600;margin-bottom:6px;margin-top:10px">처리 내용 <span style="color:var(--g400);font-weight:400">(어떻게 처리하셨나요?)</span></div>
+    <div style="font-size:12px;font-weight:600;margin-bottom:6px;margin-top:12px">처리 내용 <span style="color:var(--g400);font-weight:400">(어떻게 처리하셨나요?)</span></div>
     <textarea id="noteInput" style="min-height:90px" placeholder="예) 주치의에게 보고 후 투약 변경 완료 / 가족에게 연락하여 면회 일정 조율함"></textarea>
+    <div style="font-size:12px;color:var(--g500);margin-top:6px" id="noteModalUser"></div>
     <div class="row" style="margin-top:12px">
-      <button class="btn btn-primary btn-sm" onclick="confirmNote()">✅ 처리완료 저장</button>
+      <button class="btn btn-primary btn-sm" id="noteConfirmBtn" onclick="confirmNote()">✅ 저장</button>
       <button class="btn btn-outline btn-sm" onclick="closeNoteModal()">취소</button>
     </div>
   </div>
@@ -592,7 +609,7 @@ let currentTab = 'input'; // 현재 활성 탭 추적
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
 let floorFilt = { nursing: new Set(['all']), welfare: new Set(['all']) };
 let resviewFilt = 'all';
-let pendingNote = null; // { meetingId, resident, teamDept }
+let pendingNote = null; // { meetingId, feedbackId, type: 'done'|'add' }
 
 // ── 어르신 명단 헬퍼 ──
 // residentNames = [{name:'홍길동', room:'101'}, ...] 또는 하위호환 string
@@ -602,31 +619,57 @@ function resFloor(r){ const rm=resRoom(r); return rm?rm.charAt(0):'?'; }
 function resDisplay(r){ const rm=resRoom(r); return resName(r)+(rm?' ('+rm+'호)':''); }
 function findResByName(name){ return residentNames.find(r=>resName(r)===name); }
 
-// ── 처리 상태 헬퍼 ──
-function statusKey(resident, dept) { return `${resident}|${dept}`; }
+// ── 처리 상태 헬퍼 (피드백별 다중이력) ──
+// m.feedbackStatus[feedbackId] = { done: bool, logs: [{user, note, at, type}] }
 
-function getStatusVal(meeting, resident, dept) {
-  return meeting.status?.[statusKey(resident, dept)] || false;
+function getFbStatus(m, fid) {
+  return (m.feedbackStatus && m.feedbackStatus[fid]) || { done: false, logs: [] };
 }
-function isGroupDone(meeting, resident, dept) {
-  const v = getStatusVal(meeting, resident, dept);
-  if (typeof v === 'object') return !!v.done;
-  return !!v;
+function getFbDone(m, fid) {
+  return !!(m.feedbackStatus && m.feedbackStatus[fid] && m.feedbackStatus[fid].done);
 }
-function getGroupNote(meeting, resident, dept) {
-  const v = getStatusVal(meeting, resident, dept);
-  if (typeof v === 'object' && v.done) return { note: v.note||'', resolvedAt: v.resolvedAt||'', resolvedBy: v.resolvedBy||'' };
+function setFbStatus(m, fid, done, logEntry) {
+  if (!m.feedbackStatus) m.feedbackStatus = {};
+  if (!m.feedbackStatus[fid]) m.feedbackStatus[fid] = { done: false, logs: [] };
+  m.feedbackStatus[fid].done = done;
+  if (logEntry) m.feedbackStatus[fid].logs.push(logEntry);
+}
+
+function isGroupDone(m, resident, dept) {
+  const fbs = (m.feedbacks||[]).filter(f=>f.resident===resident&&(f.dept===dept||f.dept==='both'));
+  if (!fbs.length) return false;
+  return fbs.every(f => getFbDone(m, f.id));
+}
+function getGroupNote(m, resident, dept) {
+  // 최신 처리이력 반환 (팀탭 호환)
+  const fbs = (m.feedbacks||[]).filter(f=>f.resident===resident&&(f.dept===dept||f.dept==='both'));
+  let lastLog = null;
+  fbs.forEach(f => {
+    const st = getFbStatus(m, f.id);
+    if (st.logs && st.logs.length) {
+      const last = st.logs[st.logs.length-1];
+      if (!lastLog || (last.at||'') >= (lastLog.at||'')) lastLog = last;
+    }
+  });
+  if (lastLog) return { note: lastLog.note||'', resolvedAt: lastLog.at||'', resolvedBy: lastLog.user||'' };
+  // 구버전 m.status 하위호환
+  const key = resident+'|'+dept;
+  const v = m.status?.[key];
+  if (v && typeof v==='object' && v.done) return { note:v.note||'', resolvedAt:v.resolvedAt||'', resolvedBy:v.resolvedBy||'' };
   return null;
 }
-function setStatus(meeting, resident, dept, done, note='') {
-  if (!meeting.status) meeting.status = {};
+
+// 구버전 하위호환 (팀탭에서 직접 참조하는 경우 대비)
+function statusKey(resident, dept) { return `${resident}|${dept}`; }
+function setStatus(m, resident, dept, done, note='', resolvedBy='') {
+  if (!m.status) m.status = {};
   if (done) {
-    meeting.status[statusKey(resident, dept)] = {
-      done: true, note: note,
+    m.status[statusKey(resident, dept)] = {
+      done: true, note, resolvedBy,
       resolvedAt: new Date().toLocaleDateString('ko-KR', {year:'numeric',month:'2-digit',day:'2-digit'})
     };
   } else {
-    meeting.status[statusKey(resident, dept)] = false;
+    m.status[statusKey(resident, dept)] = false;
   }
 }
 
@@ -785,7 +828,30 @@ async function saveToDB() {
       });
     }
 
-    // 4. 어르신 명단 동기화 (전체 삭제 후 재삽입 → 로컬과 DB 항상 일치)
+    // 4. feedback_processing upsert (피드백별 처리이력)
+    const allFpRows = [];
+    meetings.forEach(m => {
+      (m.feedbacks||[]).forEach(f => {
+        const st = getFbStatus(m, f.id);
+        if (st.done || (st.logs && st.logs.length > 0)) {
+          allFpRows.push({
+            id: f.id, feedback_id: f.id, meeting_id: m.id,
+            resident: f.resident, dept: f.dept,
+            done: !!st.done, logs: st.logs || [],
+            updated_at: new Date().toISOString()
+          });
+        }
+      });
+    });
+    if (allFpRows.length > 0) {
+      await sbFetch('/feedback_processing?on_conflict=feedback_id', {
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body: JSON.stringify(allFpRows)
+      });
+    }
+
+    // 5. 어르신 명단 동기화 (전체 삭제 후 재삽입 → 로컬과 DB 항상 일치)
     await sbFetch('/residents?id=gt.0', {
       method:'DELETE',
       headers:{'Prefer':'return=minimal'}
@@ -798,7 +864,7 @@ async function saveToDB() {
       });
     }
 
-    // 5. 사용자 upsert
+    // 6. 사용자 upsert
     if (users.length > 0) {
       await sbFetch('/app_users', {
         method:'POST',
@@ -822,10 +888,11 @@ async function loadFromDB() {
   setDbDot('sync');
   setDbStatus('☁️ 서버에서 불러오는 중...');
   try {
-    const [meetData, fbData, stData, resData, usrData] = await Promise.all([
+    const [meetData, fbData, stData, fpData, resData, usrData] = await Promise.all([
       sbFetch('/meetings?order=date.desc'),
       sbFetch('/feedbacks?order=created_at.asc'),
       sbFetch('/processing_status?select=*'),
+      sbFetch('/feedback_processing?select=*').catch(()=>[]),
       sbFetch('/residents?order=name.asc'),
       sbFetch('/app_users?select=*')
     ]);
@@ -837,17 +904,26 @@ async function loadFromDB() {
         text:f.text, priority:f.priority,
         corrected:f.corrected, originalName:f.original_name
       }));
+      // 구버전 processing_status (하위호환)
       const status = {};
-      stData.filter(s=>s.meeting_id===m.id).forEach(s=>{
+      (stData||[]).filter(s=>s.meeting_id===m.id).forEach(s=>{
         const key = s.resident+'|'+s.dept;
         status[key] = s.done
           ? {done:true,note:s.note||'',resolvedBy:s.resolved_by||'',resolvedAt:s.resolved_at||''}
           : false;
       });
+      // 신규 feedbackStatus (피드백별 다중이력)
+      const feedbackStatus = {};
+      (fpData||[]).filter(fp=>fp.meeting_id===m.id).forEach(fp=>{
+        feedbackStatus[fp.feedback_id] = {
+          done: !!fp.done,
+          logs: fp.logs || []
+        };
+      });
       return {
         id:m.id, date:m.date.slice(0,10),
         summary:m.summary||'', keyIssues:m.key_issues||[],
-        rawText:m.raw_text||'', feedbacks:fbs, status
+        rawText:m.raw_text||'', feedbacks:fbs, status, feedbackStatus
       };
     });
 
@@ -925,75 +1001,132 @@ function updateApiStatus() {
   document.getElementById('apiLbl').textContent = apiKey ? 'AI 연결됨' : 'API 키 설정';
 }
 
-// ── 처리상태 즉시 DB 저장 (1건만) ──
-async function saveStatusToDB(meetingId, resident, dept, val) {
+// ── 피드백별 처리이력 즉시 DB 저장 ──
+async function saveFbStatusToDB(meetingId, feedbackId) {
+  const m = meetings.find(x=>x.id===meetingId);
+  if (!m) return;
+  const fb = (m.feedbacks||[]).find(f=>f.id===feedbackId);
+  if (!fb) return;
+  const st = getFbStatus(m, feedbackId);
+  const row = {
+    id: feedbackId,
+    feedback_id: feedbackId,
+    meeting_id: meetingId,
+    resident: fb.resident,
+    dept: fb.dept,
+    done: !!st.done,
+    logs: st.logs || [],
+    updated_at: new Date().toISOString()
+  };
   try {
-    const done = typeof val === 'object' ? !!val.done : !!val;
-    const row = {
-      meeting_id: meetingId, resident, dept, done,
-      note: (typeof val === 'object' && val.note) || '',
-      resolved_by: (typeof val === 'object' && val.resolvedBy) || '',
-      resolved_at: (typeof val === 'object' && val.resolvedAt) || ''
-    };
-    await sbFetch('/processing_status?on_conflict=meeting_id,resident,dept', {
+    await sbFetch('/feedback_processing?on_conflict=feedback_id', {
       method: 'POST',
       headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'},
       body: JSON.stringify([row])
     });
     setDbDot('ok');
   } catch(e) {
-    console.error('처리상태 저장 실패:', e);
+    console.error('처리이력 저장 실패:', e);
     setDbDot('err');
     showToast('DB 저장 실패 — 로컬에만 저장됨', 'err');
   }
 }
 
-// ── 처리 내용 모달 ──
-function toggleGroup(meetingId, residentEnc, teamDept) {
-  if(!currentUser){showToast('로그인 후 이용하세요','err');return;}
+// ── 피드백 항목 체크박스 토글 ──
+function toggleFbDone(meetingId, feedbackId, checked) {
+  if (!currentUser) {
+    showToast('로그인 후 이용하세요', 'err');
+    const cb = document.querySelector(`input[data-fid="${feedbackId}"]`);
+    if (cb) cb.checked = !checked;
+    return;
+  }
   const m = meetings.find(x=>x.id===meetingId);
   if (!m) return;
-  const resident = decodeURIComponent(residentEnc);
-  const cur = isGroupDone(m, resident, teamDept);
-  if (cur) {
-    if (!confirm('처리완료를 취소하시겠습니까?\n(처리 내용이 삭제됩니다)')) return;
-    setStatus(m, resident, teamDept, false);
-    save(); renderAll();
-    saveStatusToDB(meetingId, resident, teamDept, false);
+  if (checked) {
+    // 체크: 처리완료 내용 입력 모달
+    pendingNote = { meetingId, feedbackId, type: 'done' };
+    const fb = (m.feedbacks||[]).find(f=>f.id===feedbackId);
+    _openNoteModal(m, fb, '✅ 처리완료 등록', '✅ 처리완료 저장');
   } else {
-    pendingNote = { meetingId, resident, teamDept };
-    const deptLabel = teamDept==='nursing' ? '💉 간호팀' : '🤝 복지팀';
-    document.getElementById('noteModalInfo').innerHTML =
-      `<strong>${esc(resident)} 어르신</strong> — ${deptLabel}<br>
-       <span style="color:var(--g500)">${m.date} 회의록 피드백</span>`;
-    document.getElementById('noteInput').value = '';
-    document.getElementById('noteModal').classList.add('open');
-    setTimeout(()=>document.getElementById('noteInput').focus(), 100);
+    // 체크해제: 확인 후 취소
+    if (!confirm('처리완료를 취소하시겠습니까?\n(처리이력은 유지됩니다)')) {
+      const cb = document.querySelector(`input[data-fid="${feedbackId}"]`);
+      if (cb) cb.checked = true;
+      return;
+    }
+    if (!m.feedbackStatus) m.feedbackStatus = {};
+    if (!m.feedbackStatus[feedbackId]) m.feedbackStatus[feedbackId] = {done:false,logs:[]};
+    m.feedbackStatus[feedbackId].done = false;
+    save();
+    saveFbStatusToDB(meetingId, feedbackId);
+    renderAll();
+    showToast('처리완료 취소됨');
   }
 }
 
+// ── 추가 처리 등록 모달 ──
+function openAddLog(meetingId, feedbackId) {
+  if (!currentUser) { showToast('로그인 후 이용하세요', 'err'); return; }
+  const m = meetings.find(x=>x.id===meetingId);
+  if (!m) return;
+  const fb = (m.feedbacks||[]).find(f=>f.id===feedbackId);
+  pendingNote = { meetingId, feedbackId, type: 'add' };
+  _openNoteModal(m, fb, '➕ 추가 처리 등록', '➕ 추가처리 저장');
+}
+
+function _openNoteModal(m, fb, title, btnText) {
+  const resName = fb ? fb.resident : '';
+  const dept = fb ? fb.dept : '';
+  const deptLabel = dept==='nursing'?'💉 간호팀': dept==='welfare'?'🤝 복지팀':'💊🤝 공통';
+  const txtPreview = fb ? (fb.text||'').slice(0,60) + ((fb.text||'').length>60?'...':'') : '';
+  document.getElementById('noteModalTitle').textContent = title;
+  document.getElementById('noteModalInfo').innerHTML =
+    `<strong>${esc(resName)} 어르신</strong> — ${deptLabel}<br>
+     <span style="color:var(--g500);font-size:12px">${esc(txtPreview)}</span>`;
+  document.getElementById('noteModalUser').textContent = '처리자: ' + (currentUser ? currentUser.name : '');
+  document.getElementById('noteInput').value = '';
+  document.getElementById('noteConfirmBtn').textContent = btnText;
+  document.getElementById('noteModal').classList.add('open');
+  setTimeout(()=>document.getElementById('noteInput').focus(), 100);
+}
+
+// ── 처리 내용 모달 확인 ──
 function confirmNote() {
   if (!pendingNote) return;
   const note = document.getElementById('noteInput').value.trim();
   const m = meetings.find(x=>x.id===pendingNote.meetingId);
   if (!m) return;
-  const resolvedBy = currentUser ? currentUser.name : '';
-  const val = {
-    done: true, note,
-    resolvedBy,
-    resolvedAt: new Date().toLocaleDateString('ko-KR', {year:'numeric',month:'2-digit',day:'2-digit'})
+  const logEntry = {
+    user: currentUser ? currentUser.name : '',
+    note,
+    at: new Date().toLocaleDateString('ko-KR', {year:'numeric',month:'2-digit',day:'2-digit'}),
+    type: pendingNote.type
   };
-  setStatus(m, pendingNote.resident, pendingNote.teamDept, true, note, resolvedBy);
-  // 즉시 DB 저장 (1건만, 빠름)
-  saveStatusToDB(pendingNote.meetingId, pendingNote.resident, pendingNote.teamDept, val);
+  const isDone = pendingNote.type === 'done';
+  setFbStatus(m, pendingNote.feedbackId, isDone, logEntry);
+  const mid = pendingNote.meetingId;
+  const fid = pendingNote.feedbackId;
   pendingNote = null;
   closeNoteModal();
+  saveFbStatusToDB(mid, fid);
   localStorage.setItem('sd_meetings', JSON.stringify(meetings));
-  renderAll(); showToast('처리완료 저장됨','ok');
+  renderAll();
+  showToast(isDone ? '처리완료 저장됨' : '추가처리 등록됨', 'ok');
 }
+
 function closeNoteModal() {
   document.getElementById('noteModal').classList.remove('open');
   pendingNote = null;
+}
+
+// 구버전 하위호환 (혹시 외부에서 toggleGroup 직접 호출하는 경우)
+function toggleGroup(meetingId, residentEnc, teamDept) {
+  if(!currentUser){showToast('로그인 후 이용하세요','err');return;}
+  const m = meetings.find(x=>x.id===meetingId);
+  if (!m) return;
+  const resident = decodeURIComponent(residentEnc);
+  const fbs = (m.feedbacks||[]).filter(f=>f.resident===resident&&(f.dept===teamDept||f.dept==='both'));
+  if (fbs.length > 0) toggleFbDone(meetingId, fbs[0].id, !getFbDone(m, fbs[0].id));
 }
 
 // ── AI ANALYSIS ──
@@ -1305,32 +1438,53 @@ function renderMeetingResidents(m) {
 }
 
 function renderDeptBlock(m, resident, teamDept, fbs) {
-  const done=isGroupDone(m, resident, teamDept);
-  const noteInfo=getGroupNote(m, resident, teamDept);
-  const deptLabel=teamDept==='nursing'?'💉 간호팀':'🤝 복지팀';
-  const blockId=`db-${m.id}-${btoa(encodeURIComponent(resident+teamDept)).slice(0,12)}`;
+  const doneCnt = fbs.filter(f=>getFbDone(m,f.id)).length;
+  const allDone = fbs.length > 0 && doneCnt === fbs.length;
+  const deptLabel = teamDept==='nursing'?'💉 간호팀':'🤝 복지팀';
+  const blockId = `db-${m.id}-${btoa(encodeURIComponent(resident+teamDept)).slice(0,12)}`;
+
+  const fbRowsHtml = fbs.map(f => {
+    const fbDone = getFbDone(m, f.id);
+    const st = getFbStatus(m, f.id);
+    const logs = st.logs || [];
+    const logsHtml = logs.length ? `<div class="fb-logs">${logs.map(lg=>`
+      <div class="fb-log-entry ${lg.type==='done'?'log-done-entry':'log-add-entry'}">
+        <span class="log-badge ${lg.type==='done'?'log-badge-done':'log-badge-add'}">${lg.type==='done'?'처리완료':'추가처리'}</span>
+        <span class="log-who">${esc(lg.user||'')}</span>
+        <span class="log-at">${esc(lg.at||'')}</span>
+        ${lg.note?`<div class="log-note-txt">${esc(lg.note)}</div>`:''}
+      </div>`).join('')}</div>` : '';
+    return `<div class="fb-row${fbDone?' fb-row-done':''}">
+      <div class="fb-row-top">
+        <input type="checkbox" class="fb-check" data-fid="${f.id}" ${fbDone?'checked':''}
+          onchange="toggleFbDone('${m.id}','${f.id}',this.checked)" title="처리완료 체크">
+        ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
+        <span class="fb-text${fbDone?' fb-text-done':''}">${esc(f.text)}</span>
+        <div class="fb-actions">
+          <button onclick="openAddLog('${m.id}','${f.id}')"
+            style="background:none;border:1px solid var(--g300);color:var(--g600);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap"
+            title="추가 처리 등록">➕ 추가처리</button>
+          <button onclick="openFeedbackEdit('${m.id}','${f.id}')"
+            style="background:none;border:none;cursor:pointer;color:var(--g400);font-size:13px;padding:0 2px"
+            title="내용 편집">✏️</button>
+        </div>
+      </div>
+      ${logsHtml}
+    </div>`;
+  }).join('');
+
   return `<div class="dept-block">
     <div class="dept-block-head ${teamDept}" onclick="toggleDeptBlock('${blockId}')">
       <span class="dept-block-title ${teamDept}">${deptLabel}</span>
       <span style="font-size:12px;color:var(--g500);margin-left:4px">${fbs.length}건</span>
-      <div class="done-toggle ${done?'done':'pending'}" onclick="event.stopPropagation();toggleGroup('${m.id}','${encodeURIComponent(resident)}','${teamDept}')">
-        <div class="chk">${done?'✓':''}</div>
-        ${done?'처리완료':'미처리'}
+      <div style="margin-left:auto;font-size:12px;font-weight:700;padding:3px 11px;border-radius:12px;
+        ${allDone?'background:var(--success-light);color:var(--success)':'background:var(--warning-light);color:var(--warning)'}">
+        ${allDone?'✅ 전체완료':`⏳ ${doneCnt}/${fbs.length} 완료`}
       </div>
       <span class="collapse-arrow open" id="arr-${blockId}">▲</span>
     </div>
     <div class="dept-block-body open" id="${blockId}">
-      <div class="fb-list">
-        ${fbs.map(f=>`<div class="fb-row">
-          ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
-          <span class="fb-text">${esc(f.text)}</span>
-          <button onclick="openFeedbackEdit('${m.id}','${f.id}')" style="margin-left:6px;flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--g400);font-size:13px;padding:0 2px" title="편집">✏️</button>
-        </div>`).join('')}
-      </div>
-      ${noteInfo?`<div class="note-box">
-        <div class="note-lbl">✅ 처리 내용 <span class="note-date">${noteInfo.resolvedAt}${noteInfo.resolvedBy?' · '+esc(noteInfo.resolvedBy):''}</span></div>
-        ${noteInfo.note ? esc(noteInfo.note) : '<span style="color:var(--g400)">내용 없음</span>'}
-      </div>`:''}
+      <div class="fb-list">${fbRowsHtml}</div>
     </div>
   </div>`;
 }

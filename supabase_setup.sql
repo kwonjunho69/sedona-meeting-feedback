@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS feedbacks (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. 처리 상태 테이블
+-- 3. 처리 상태 테이블 (레거시 — 하위호환 유지)
 CREATE TABLE IF NOT EXISTS processing_status (
   id SERIAL PRIMARY KEY,
   meeting_id TEXT REFERENCES meetings(id) ON DELETE CASCADE,
@@ -38,6 +38,19 @@ CREATE TABLE IF NOT EXISTS processing_status (
   resolved_by TEXT DEFAULT '',
   resolved_at TEXT DEFAULT '',
   UNIQUE(meeting_id, resident, dept)
+);
+
+-- 3-2. 피드백 처리이력 테이블 (신규 — 항목별 다중 이력 지원)
+-- logs: [{user, note, at, type}] type = 'done' | 'add'
+CREATE TABLE IF NOT EXISTS feedback_processing (
+  id TEXT PRIMARY KEY,
+  feedback_id TEXT NOT NULL UNIQUE,
+  meeting_id TEXT REFERENCES meetings(id) ON DELETE CASCADE,
+  resident TEXT NOT NULL,
+  dept TEXT NOT NULL,
+  done BOOLEAN DEFAULT FALSE,
+  logs JSONB DEFAULT '[]',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 4. 어르신 명단 테이블
@@ -68,6 +81,7 @@ ON CONFLICT (id) DO NOTHING;
 ALTER TABLE meetings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE feedbacks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE processing_status ENABLE ROW LEVEL SECURITY;
+ALTER TABLE feedback_processing ENABLE ROW LEVEL SECURITY;
 ALTER TABLE residents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
 
@@ -75,6 +89,7 @@ ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_meetings" ON meetings FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all_feedbacks" ON feedbacks FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all_status" ON processing_status FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_fp" ON feedback_processing FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all_residents" ON residents FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all_users" ON app_users FOR ALL USING (true) WITH CHECK (true);
 
@@ -83,4 +98,6 @@ CREATE POLICY "allow_all_users" ON app_users FOR ALL USING (true) WITH CHECK (tr
 -- =============================================
 CREATE INDEX IF NOT EXISTS idx_feedbacks_meeting ON feedbacks(meeting_id);
 CREATE INDEX IF NOT EXISTS idx_status_meeting ON processing_status(meeting_id);
+CREATE INDEX IF NOT EXISTS idx_fp_meeting ON feedback_processing(meeting_id);
+CREATE INDEX IF NOT EXISTS idx_fp_feedback ON feedback_processing(feedback_id);
 CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(date DESC);
