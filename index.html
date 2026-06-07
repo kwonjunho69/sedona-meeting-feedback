@@ -1936,12 +1936,13 @@ function renderResview() {
   );
   const floorBar = document.getElementById('resviewFloorFilter');
   if (floorBar) {
-    floorBar.innerHTML = '<span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>'
-      + '<button class="fbtn' + (resviewFloor==='all'?' active':'') + '" onclick="setResviewFloor('all',this)">전체</button>'
-      + allFloors.map(fl => {
-          const label = fl==='?' ? '미지정' : fl+'층';
-          return `<button class="fbtn${resviewFloor===fl?' active':''}" onclick="setResviewFloor('${fl}',this)">${label}</button>`;
-        }).join('');
+    const allBtn = `<button class="fbtn${resviewFloor==='all'?' active':''}" onclick="setResviewFloor('all',this)">전체</button>`;
+    const floorBtns = allFloors.map(fl => {
+      const label = fl==='?' ? '미지정' : fl+'층';
+      const active = resviewFloor===fl ? ' active' : '';
+      return `<button class="fbtn${active}" onclick="setResviewFloor(this.dataset.fl,this)" data-fl="${fl}">${label}</button>`;
+    }).join('');
+    floorBar.innerHTML = '<span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>' + allBtn + floorBtns;
   }
 
   const search=(document.getElementById('resviewSearch').value||'').trim();
