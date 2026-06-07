@@ -205,6 +205,11 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 
 @media(max-width:640px){.main{padding:12px}.sum-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
+<!-- API 키 설정 (로컬 config.js — .gitignored, GitHub Pages에는 없음) -->
+<script>window.APP_CONFIG = window.APP_CONFIG || {};</script>
+<script src="config.js" onerror="console.info('config.js 없음 — 앱 UI에서 API 키를 설정하세요.')"></script>
+<!-- 회의록 분석 전문 프롬프트 모듈 -->
+<script src="meeting_prompt.js" onerror="console.warn('meeting_prompt.js 로드 실패')"></script>
 </head>
 <body>
 
@@ -627,10 +632,11 @@ const DEFAULT_USERS = [
   { id:'admin', name:'관리자', password:'1234', role:'admin' }
 ];
 
-// ── Supabase 설정 (세도나 시니어타운) ──
-const _DEF_API = 'AQ.Ab8RN6Ltf4-xNoimuufmJTwfwy5QGk_kqqTfNU4nEduTYboIQ';
-const SB_URL = 'https://alovgxybtgtlxlfomgub.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsb3ZneHlidGd0bHhsZm9tZ3ViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2ODkzMzQsImV4cCI6MjA5NjI2NTMzNH0.tmccVeAn1OOBBgI7T7jcy3qa8aXKm3XkkjBd_rx6HIk';
+// ── Supabase 설정 — config.js에서 로드, 없으면 빌트인 fallback ──
+const _CFG = window.APP_CONFIG || {};
+const _DEF_API = _CFG.GEMINI_DEFAULT_KEY || '';
+const SB_URL = _CFG.SUPABASE_URL || 'https://alovgxybtgtlxlfomgub.supabase.co';
+const SB_KEY = _CFG.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsb3ZneHlidGd0bHhsZm9tZ3ViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2ODkzMzQsImV4cCI6MjA5NjI2NTMzNH0.tmccVeAn1OOBBgI7T7jcy3qa8aXKm3XkkjBd_rx6HIk';
 const SB_REST = SB_URL + '/rest/v1';
 const SB_HDR = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};
 
@@ -923,22 +929,26 @@ async function runAI() {
   appendBubble('user', `${dateVal} 회의록 분석 요청`);
   const tid = appendTyping();
 
-  const MAX=80000;
-  const inputText = text.length>MAX ? text.slice(0,MAX)+'\n...(이하 생략)' : text;
-  const namesCtx = residentNames.length>0
-    ? `\n\n등록된 어르신 명단: ${residentNames.map(resName).join(', ')}\n음성인식 오류로 잘못된 이름은 위 명단으로 교정하고 corrected:true 표시.` : '';
+  // ── meeting_prompt.js 모듈 사용 (없으면 내장 fallback) ──
+  const _MP = window.MEETING_PROMPT;
+  const _names = residentNames.map(resName);
 
-  const sysPrompt = `당신은 노인요양원 케어 회의록을 분석하는 AI입니다. 반드시 아래 JSON 형식으로만 응답하세요. 마크다운 없이 순수 JSON만 출력하세요.
-
-{"meeting_date":"날짜","summary":"회의 요약 2~3문장","key_issues":["주요사항1","주요사항2"],"feedbacks":[{"resident":"어르신성명","original_name":"원문이름","corrected":false,"dept":"nursing 또는 welfare 또는 both","text":"피드백 내용 (충분히 상세하게)","priority":"high 또는 normal"}]}
-
-규칙:
-- nursing = 간호/의료/투약/처방/혈압/혈당/상처/욕창/낙상/물리치료
-- welfare = 복지/생활/가족/프로그램/상담/외출/이미용/목욕/정서
-- both = 간호와 복지 모두 해당
-- priority high = 즉시 처리 필요 (낙상/욕창/응급/투약오류 등)
-- 한 어르신에게 여러 업무가 있으면 feedbacks 항목을 각각 분리
-- text는 내용을 충분히 이해할 수 있도록 상세하게 작성${namesCtx}`;
+  let reqBody;
+  if (_MP && _MP.buildRequestBody) {
+    reqBody = _MP.buildRequestBody(dateVal, text, _names);
+  } else {
+    // meeting_prompt.js 로드 실패 시 내장 fallback
+    const MAX=80000;
+    const inputText = text.length>MAX ? text.slice(0,MAX)+'\n...(이하 생략)' : text;
+    const namesCtx = _names.length>0
+      ? `\n\n등록된 어르신 명단: ${_names.join(', ')}\n음성인식 오류로 잘못된 이름은 위 명단으로 교정하고 corrected:true 표시.` : '';
+    const sysPrompt = `당신은 노인요양원 케어 회의록을 분석하는 AI입니다. 반드시 아래 JSON 형식으로만 응답하세요. 마크다운 없이 순수 JSON만 출력하세요.\n\n{"meeting_date":"날짜","summary":"회의 요약 2~3문장","key_issues":["주요사항1","주요사항2"],"feedbacks":[{"resident":"어르신성명","original_name":"원문이름","corrected":false,"dept":"nursing 또는 welfare 또는 both","text":"피드백 내용 (충분히 상세하게)","priority":"high 또는 normal"}]}\n\n규칙:\n- nursing = 간호/의료/투약/처방/혈압/혈당/상처/욕창/낙상/물리치료\n- welfare = 복지/생활/가족/프로그램/상담/외출/이미용/목욕/정서\n- both = 간호와 복지 모두 해당\n- priority high = 즉시 처리 필요 (낙상/욕창/응급/투약오류 등)\n- 한 어르신에게 여러 업무가 있으면 feedbacks 항목을 각각 분리\n- text는 내용을 충분히 이해할 수 있도록 상세하게 작성${namesCtx}`;
+    reqBody = {
+      system_instruction:{parts:[{text:sysPrompt}]},
+      contents:[{role:'user',parts:[{text:`회의 날짜: ${dateVal}\n\n회의록:\n${inputText}`}]}],
+      generationConfig:{maxOutputTokens:65536, temperature:0.1}
+    };
+  }
 
   const fallbackModels = [modelId,'gemini-2.0-flash','gemini-1.5-flash','gemini-2.5-flash']
     .filter((m,i,a)=>a.indexOf(m)===i);
@@ -954,11 +964,7 @@ async function runAI() {
       const url=`https://generativelanguage.googleapis.com/v1beta/models/${tryModel}:generateContent?key=${apiKey}`;
       const res = await fetch(url,{
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          system_instruction:{parts:[{text:sysPrompt}]},
-          contents:[{role:'user',parts:[{text:`회의 날짜: ${dateVal}\n\n회의록:\n${inputText}`}]}],
-          generationConfig:{maxOutputTokens:65536, temperature:0.1}
-        })
+        body:JSON.stringify(reqBody)
       });
       if (res.ok) {
         const data=await res.json();
