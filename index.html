@@ -393,7 +393,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
       <input type="text" id="resviewSearch" placeholder="🔍 이름 검색..." oninput="renderResview()"
         style="margin-left:auto;width:120px;font-size:12px;padding:5px 10px">
     </div>
-    <div class="floor-filter-bar" id="resviewFloorFilter" style="padding:6px 0 2px">
+    <div class="floor-filter-bar" id="resviewFloorFilter">
       <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
     </div>
     <div id="resviewList"></div>
@@ -662,7 +662,7 @@ let currentTab = 'input'; // 현재 활성 탭 추적
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
 let floorFilt = { nursing: new Set(['all']), welfare: new Set(['all']) };
 let resviewFilt = 'all';
-let resviewFloor = 'all';
+let resviewFloorFilt = new Set(['all']);
 let pendingNote = null; // { meetingId, feedbackId, type: 'done'|'add' }
 
 // ── 어르신 명단 헬퍼 ──
@@ -1885,11 +1885,32 @@ function setResviewFilt(val, btn) {
   btn.classList.add('active');
   renderResview();
 }
-function setResviewFloor(val, btn) {
-  resviewFloor = val;
-  document.getElementById('resviewFloorFilter').querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
+function toggleResviewFloor(floor) {
+  const fset = resviewFloorFilt;
+  if (floor==='all') { fset.clear(); fset.add('all'); }
+  else { fset.delete('all'); if(fset.has(floor)) fset.delete(floor); else fset.add(floor); if(fset.size===0) fset.add('all'); }
   renderResview();
+}
+function renderResviewFloorCheckboxes(floors) {
+  const bar = document.getElementById('resviewFloorFilter');
+  if (!bar) return;
+  const fset = resviewFloorFilt;
+  const allChecked = fset.has('all');
+  while (bar.children.length > 1) bar.removeChild(bar.lastChild);
+  const makeLabel = (fl, label, checked) => {
+    const lbl = document.createElement('label');
+    lbl.className = checked ? 'checked' : '';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = checked;
+    cb.addEventListener('change', () => toggleResviewFloor(fl));
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(' ' + label));
+    bar.appendChild(lbl);
+  };
+  makeLabel('all', '전체', allChecked);
+  floors.sort((a,b) => a==='?'?1:b==='?'?-1:a.localeCompare(b,undefined,{numeric:true})).forEach(fl => {
+    makeLabel(fl, fl==='?' ? '미지정' : fl+'층', !allChecked && fset.has(fl));
+  });
 }
 
 function renderResview() {
@@ -1930,25 +1951,14 @@ function renderResview() {
     <div class="sum-card d"><div class="num" style="color:var(--success)">${fullDoneRes}</div><div class="lbl">✅ 전체 처리완료</div></div>
     <div class="sum-card t"><div class="num">${doneGroups}/${totalGroups}</div><div class="lbl">처리건 / 전체</div></div>`;
 
-  // 층 필터 버튼 동적 생성
-  const allFloors = [...new Set(allRes.map(res => getResidentFloor(res)))].sort((a,b) =>
-    a==='?'?1:b==='?'?-1:a.localeCompare(b,undefined,{numeric:true})
-  );
-  const floorBar = document.getElementById('resviewFloorFilter');
-  if (floorBar) {
-    const allBtn = `<button class="fbtn${resviewFloor==='all'?' active':''}" onclick="setResviewFloor('all',this)">전체</button>`;
-    const floorBtns = allFloors.map(fl => {
-      const label = fl==='?' ? '미지정' : fl+'층';
-      const active = resviewFloor===fl ? ' active' : '';
-      return `<button class="fbtn${active}" onclick="setResviewFloor(this.dataset.fl,this)" data-fl="${fl}">${label}</button>`;
-    }).join('');
-    floorBar.innerHTML = '<span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>' + allBtn + floorBtns;
-  }
+  // 층 체크박스 필터 동적 생성
+  const allFloors = [...new Set(allRes.map(res => getResidentFloor(res)))];
+  renderResviewFloorCheckboxes(allFloors);
 
   const search=(document.getElementById('resviewSearch').value||'').trim();
   let filtered=resStats;
   if (search) filtered=filtered.filter(s=>s.res.includes(search));
-  if (resviewFloor!=='all') filtered=filtered.filter(s=>getResidentFloor(s.res)===resviewFloor);
+  if (!resviewFloorFilt.has('all')) filtered=filtered.filter(s=>resviewFloorFilt.has(getResidentFloor(s.res)));
   if (resviewFilt==='pending') filtered=filtered.filter(s=>s.pendGroups>0);
   else if (resviewFilt==='done') filtered=filtered.filter(s=>s.pendGroups===0);
 
