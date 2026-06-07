@@ -385,13 +385,16 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   <div id="resviewEmpty" class="empty"><div class="ei">👤</div><p>분석된 회의록이 없습니다.</p></div>
   <div id="resviewContent" style="display:none">
     <div class="sum-grid" id="resviewSumCards" style="display:none"></div>
-    <div class="fbar">
-      <span style="font-size:12px;font-weight:600;color:var(--g500)">필터:</span>
+    <div class="fbar" style="flex-wrap:wrap;gap:6px">
+      <span style="font-size:12px;font-weight:600;color:var(--g500)">처리상태:</span>
       <button class="fbtn active" onclick="setResviewFilt('all',this)">전체</button>
-      <button class="fbtn p" onclick="setResviewFilt('pending',this)">⏳ 미처리 있는 어르신</button>
-      <button class="fbtn d" onclick="setResviewFilt('done',this)">✅ 전체 처리완료</button>
-      <input type="text" id="resviewSearch" placeholder="어르신 이름 검색..." oninput="renderResview()"
-        style="margin-left:auto;width:140px;font-size:12px;padding:5px 10px">
+      <button class="fbtn p" onclick="setResviewFilt('pending',this)">⏳ 미처리</button>
+      <button class="fbtn d" onclick="setResviewFilt('done',this)">✅ 처리완료</button>
+      <input type="text" id="resviewSearch" placeholder="🔍 이름 검색..." oninput="renderResview()"
+        style="margin-left:auto;width:120px;font-size:12px;padding:5px 10px">
+    </div>
+    <div class="floor-filter-bar" id="resviewFloorFilter" style="padding:6px 0 2px">
+      <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
     </div>
     <div id="resviewList"></div>
   </div>
@@ -659,6 +662,7 @@ let currentTab = 'input'; // 현재 활성 탭 추적
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
 let floorFilt = { nursing: new Set(['all']), welfare: new Set(['all']) };
 let resviewFilt = 'all';
+let resviewFloor = 'all';
 let pendingNote = null; // { meetingId, feedbackId, type: 'done'|'add' }
 
 // ── 어르신 명단 헬퍼 ──
@@ -1881,6 +1885,12 @@ function setResviewFilt(val, btn) {
   btn.classList.add('active');
   renderResview();
 }
+function setResviewFloor(val, btn) {
+  resviewFloor = val;
+  document.getElementById('resviewFloorFilter').querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderResview();
+}
 
 function renderResview() {
   const resMap = {};
@@ -1920,9 +1930,24 @@ function renderResview() {
     <div class="sum-card d"><div class="num" style="color:var(--success)">${fullDoneRes}</div><div class="lbl">✅ 전체 처리완료</div></div>
     <div class="sum-card t"><div class="num">${doneGroups}/${totalGroups}</div><div class="lbl">처리건 / 전체</div></div>`;
 
+  // 층 필터 버튼 동적 생성
+  const allFloors = [...new Set(allRes.map(res => getResidentFloor(res)))].sort((a,b) =>
+    a==='?'?1:b==='?'?-1:a.localeCompare(b,undefined,{numeric:true})
+  );
+  const floorBar = document.getElementById('resviewFloorFilter');
+  if (floorBar) {
+    floorBar.innerHTML = '<span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>'
+      + '<button class="fbtn' + (resviewFloor==='all'?' active':'') + '" onclick="setResviewFloor('all',this)">전체</button>'
+      + allFloors.map(fl => {
+          const label = fl==='?' ? '미지정' : fl+'층';
+          return `<button class="fbtn${resviewFloor===fl?' active':''}" onclick="setResviewFloor('${fl}',this)">${label}</button>`;
+        }).join('');
+  }
+
   const search=(document.getElementById('resviewSearch').value||'').trim();
   let filtered=resStats;
   if (search) filtered=filtered.filter(s=>s.res.includes(search));
+  if (resviewFloor!=='all') filtered=filtered.filter(s=>getResidentFloor(s.res)===resviewFloor);
   if (resviewFilt==='pending') filtered=filtered.filter(s=>s.pendGroups>0);
   else if (resviewFilt==='done') filtered=filtered.filter(s=>s.pendGroups===0);
 
