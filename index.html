@@ -2405,15 +2405,27 @@ function saveFeedbackEdit(){
   showToast('피드백 수정됨','ok');
 }
 
-function deleteFeedback(){
+async function deleteFeedback(){
   if(!editTarget) return;
   if(!confirm('이 피드백 항목을 삭제하시겠습니까?')) return;
   const m = meetings.find(x=>x.id===editTarget.meetingId);
   if(!m) return;
-  m.feedbacks = m.feedbacks.filter(x=>x.id!==editTarget.feedbackId);
+  const fid = editTarget.feedbackId;
+  m.feedbacks = m.feedbacks.filter(x=>x.id!==fid);
+  // feedbackStatus에서도 제거
+  if(m.feedbackStatus) delete m.feedbackStatus[fid];
   closeFbEditModal();
-  save(); renderCurrentTab();
-  showToast('삭제됨');
+  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  renderCurrentTab(); updateAllBadges();
+  showToast('삭제 중...');
+  try {
+    await sbFetch('/feedback_processing?feedback_id=eq.'+fid, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    await sbFetch('/feedbacks?id=eq.'+fid, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    showToast('삭제 완료', 'ok');
+  } catch(e) {
+    console.error('deleteFeedback DB error:', e);
+    showToast('로컬 삭제됨 (DB 오류: '+e.message.slice(0,40)+')', 'err');
+  }
 }
 
 function closeFbEditModal(){
