@@ -1602,7 +1602,10 @@ function renderTeam(team) {
     const floorLabel=fl==='?'?'호실 미지정':fl+'층';
 
     const resHtml=Object.entries(resMap).map(([res,eList])=>{
-      const pendCnt=eList.filter(e=>!e.done).length;
+      // 항목별 done 기준으로 미처리 건수 집계
+      const totalFbCnt=eList.reduce((a,e)=>a+(e.fbs||[]).length,0);
+      const doneFbCnt=eList.reduce((a,e)=>a+(e.fbs||[]).filter(f=>getFbDone(e.meeting,f.id)).length,0);
+      const pendCnt=totalFbCnt-doneFbCnt;
       const rm=getResidentRoom(res);
       const bodyId='tr-'+team+'-'+btoa(encodeURIComponent(res)).slice(0,10);
       return `<div class="team-res-card" style="margin-left:0">
@@ -1611,29 +1614,43 @@ function renderTeam(team) {
           <span class="team-res-name">${esc(res)}</span>
           ${rm?`<span class="room-badge">${rm}호</span>`:''}
           <span style="font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;${pendCnt>0?'background:var(--danger-light);color:var(--danger)':'background:var(--success-light);color:var(--success)'}">
-            ${pendCnt>0?`미처리 ${pendCnt}건`:`${eList.length}건 완료`}
+            ${pendCnt>0?`미처리 ${pendCnt}건`:`${totalFbCnt}건 완료`}
           </span>
           <span class="collapse-arrow open" id="arr-${bodyId}" style="margin-left:8px">▲</span>
         </div>
         <div class="team-res-body open" id="${bodyId}">
           ${eList.map(e=>{
-            const ni=e.noteInfo;
-            return `<div class="team-date-row">
-              <span class="team-date-tag">${e.meeting.date}</span>
-              <div class="team-date-items">
-                ${e.fbs.map(f=>`<div class="team-date-item">
-                  ${f.priority==='high'?`<span class="pri-badge" style="margin-top:0;flex-shrink:0">⚠️</span>`:''}
-                  <span>${esc(f.text)}</span>
-                </div>`).join('')}
-                ${ni?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 10px;font-size:12px;color:#166534;margin-top:6px;line-height:1.6">
-                  <span style="font-weight:700">✅ 처리내용</span> <span style="color:var(--g400);font-size:11px">${ni.resolvedAt}${ni.resolvedBy?' · '+esc(ni.resolvedBy):''}</span><br>
-                  ${ni.note?esc(ni.note):'<span style="color:var(--g400)">내용 없음</span>'}
-                </div>`:''}
+            return `<div class="team-date-row" style="flex-direction:column;align-items:stretch;gap:0;padding:0">
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 14px 4px">
+                <span class="team-date-tag">${e.meeting.date}</span>
               </div>
-              <div class="done-toggle ${e.done?'done':'pending'}"
-                   onclick="toggleGroup('${e.meeting.id}','${encodeURIComponent(res)}','${team}')">
-                <div class="chk">${e.done?'✓':''}</div>
-                ${e.done?'처리완료':'미처리'}
+              <div class="fb-list" style="border-top:none">
+                ${e.fbs.map(f=>{
+                  const fbDone=getFbDone(e.meeting,f.id);
+                  const st=getFbStatus(e.meeting,f.id);
+                  const logs=st.logs||[];
+                  const logsHtml=logs.length?`<div class="fb-logs">${logs.map(lg=>`
+                    <div class="fb-log-entry ${lg.type==='done'?'log-done-entry':'log-add-entry'}">
+                      <span class="log-badge ${lg.type==='done'?'log-badge-done':'log-badge-add'}">${lg.type==='done'?'처리완료':'추가처리'}</span>
+                      <span class="log-who">${esc(lg.user||'')}</span>
+                      <span class="log-at">${esc(lg.at||'')}</span>
+                      ${lg.note?`<div class="log-note-txt">${esc(lg.note)}</div>`:''}
+                    </div>`).join('')}</div>`:'';
+                  return `<div class="fb-row${fbDone?' fb-row-done':''}">
+                    <div class="fb-row-top">
+                      <input type="checkbox" class="fb-check" data-fid="${f.id}" ${fbDone?'checked':''}
+                        onchange="toggleFbDone('${e.meeting.id}','${f.id}',this.checked)" title="처리완료 체크">
+                      ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
+                      <span class="fb-text${fbDone?' fb-text-done':''}">${esc(f.text)}</span>
+                      <div class="fb-actions">
+                        <button onclick="openAddLog('${e.meeting.id}','${f.id}')"
+                          style="background:none;border:1px solid var(--g300);color:var(--g600);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap"
+                          title="추가 처리 등록">➕ 추가처리</button>
+                      </div>
+                    </div>
+                    ${logsHtml}
+                  </div>`;
+                }).join('')}
               </div>
             </div>`;
           }).join('')}
