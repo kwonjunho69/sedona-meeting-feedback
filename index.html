@@ -929,26 +929,22 @@ async function runAI() {
   appendBubble('user', `${dateVal} 회의록 분석 요청`);
   const tid = appendTyping();
 
-  // ── meeting_prompt.js 모듈 사용 (없으면 내장 fallback) ──
-  const _MP = window.MEETING_PROMPT;
-  const _names = residentNames.map(resName);
+  const MAX=80000;
+  const inputText = text.length>MAX ? text.slice(0,MAX)+'\n...(이하 생략)' : text;
+  const namesCtx = residentNames.length>0
+    ? `\n\n등록된 어르신 명단: ${residentNames.map(resName).join(', ')}\n음성인식 오류로 잘못된 이름은 위 명단으로 교정하고 corrected:true 표시.` : '';
 
-  let reqBody;
-  if (_MP && _MP.buildRequestBody) {
-    reqBody = _MP.buildRequestBody(dateVal, text, _names);
-  } else {
-    // meeting_prompt.js 로드 실패 시 내장 fallback
-    const MAX=80000;
-    const inputText = text.length>MAX ? text.slice(0,MAX)+'\n...(이하 생략)' : text;
-    const namesCtx = _names.length>0
-      ? `\n\n등록된 어르신 명단: ${_names.join(', ')}\n음성인식 오류로 잘못된 이름은 위 명단으로 교정하고 corrected:true 표시.` : '';
-    const sysPrompt = `당신은 노인요양원 케어 회의록을 분석하는 AI입니다. 반드시 아래 JSON 형식으로만 응답하세요. 마크다운 없이 순수 JSON만 출력하세요.\n\n{"meeting_date":"날짜","summary":"회의 요약 2~3문장","key_issues":["주요사항1","주요사항2"],"feedbacks":[{"resident":"어르신성명","original_name":"원문이름","corrected":false,"dept":"nursing 또는 welfare 또는 both","text":"피드백 내용 (충분히 상세하게)","priority":"high 또는 normal"}]}\n\n규칙:\n- nursing = 간호/의료/투약/처방/혈압/혈당/상처/욕창/낙상/물리치료\n- welfare = 복지/생활/가족/프로그램/상담/외출/이미용/목욕/정서\n- both = 간호와 복지 모두 해당\n- priority high = 즉시 처리 필요 (낙상/욕창/응급/투약오류 등)\n- 한 어르신에게 여러 업무가 있으면 feedbacks 항목을 각각 분리\n- text는 내용을 충분히 이해할 수 있도록 상세하게 작성${namesCtx}`;
-    reqBody = {
-      system_instruction:{parts:[{text:sysPrompt}]},
-      contents:[{role:'user',parts:[{text:`회의 날짜: ${dateVal}\n\n회의록:\n${inputText}`}]}],
-      generationConfig:{maxOutputTokens:65536, temperature:0.1}
-    };
-  }
+  const sysPrompt = `당신은 노인요양원 케어 회의록을 분석하는 AI입니다. 반드시 아래 JSON 형식으로만 응답하세요. 마크다운 없이 순수 JSON만 출력하세요.
+
+{"meeting_date":"날짜","summary":"회의 요약 2~3문장","key_issues":["주요사항1","주요사항2"],"feedbacks":[{"resident":"어르신성명","original_name":"원문이름","corrected":false,"dept":"nursing 또는 welfare 또는 both","text":"피드백 내용 (충분히 상세하게)","priority":"high 또는 normal"}]}
+
+규칙:
+- nursing = 간호/의료/투약/처방/혈압/혈당/상처/욕창/낙상/물리치료
+- welfare = 복지/생활/가족/프로그램/상담/외출/이미용/목욕/정서
+- both = 간호와 복지 모두 해당
+- priority high = 즉시 처리 필요 (낙상/욕창/응급/투약오류 등)
+- 한 어르신에게 여러 업무가 있으면 feedbacks 항목을 각각 분리
+- text는 내용을 충분히 이해할 수 있도록 상세하게 작성${namesCtx}`;
 
   const fallbackModels = [modelId,'gemini-2.5-flash','gemini-2.5-flash-lite','gemini-1.5-flash']
     .filter((m,i,a)=>a.indexOf(m)===i);
@@ -964,7 +960,11 @@ async function runAI() {
       const url=`https://generativelanguage.googleapis.com/v1beta/models/${tryModel}:generateContent?key=${apiKey}`;
       const res = await fetch(url,{
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(reqBody)
+        body:JSON.stringify({
+          system_instruction:{parts:[{text:sysPrompt}]},
+          contents:[{role:'user',parts:[{text:`회의 날짜: ${dateVal}\n\n회의록:\n${inputText}`}]}],
+          generationConfig:{maxOutputTokens:65536, temperature:0.1}
+        })
       });
       if (res.ok) {
         const data=await res.json();
