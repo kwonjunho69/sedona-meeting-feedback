@@ -1586,14 +1586,23 @@ function toggleMeeting(id) {
   else openMeetingIds.delete(id);
 }
 
-function deleteMeeting(id) {
+async function deleteMeeting(id) {
   const m=meetings.find(x=>x.id===id);
   if (!m||!confirm(m.date+' 회의록을 삭제하시겠습니까?')) return;
   meetings=meetings.filter(x=>x.id!==id);
-  // Supabase에서 삭제 (feedbacks/status 는 CASCADE)
-  sbFetch('/meetings?id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}}).catch(console.error);
   localStorage.setItem('sd_meetings', JSON.stringify(meetings));
-  renderDates(); updateAllBadges(); showToast('삭제됨');
+  renderDates(); updateAllBadges(); showToast('삭제 중...', '');
+  try {
+    // 자식 테이블 먼저 삭제 (FK 제약)
+    await sbFetch('/feedback_processing?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    await sbFetch('/processing_status?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    await sbFetch('/feedbacks?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    await sbFetch('/meetings?id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    showToast('삭제 완료', 'ok');
+  } catch(e) {
+    console.error('deleteMeeting DB error:', e);
+    showToast('로컬 삭제됨 (DB 오류: '+e.message.slice(0,40)+')', 'err');
+  }
 }
 
 // ══════════════════════════
