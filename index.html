@@ -541,6 +541,48 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   </div>
 </div>
 
+<!-- ══ 수동 피드백 추가 모달 ══ -->
+<div class="modal-ov" id="addFbModal">
+  <div class="modal" style="max-width:440px">
+    <h2>➕ 어르신 피드백 추가</h2>
+    <div style="font-size:12px;color:var(--g500);margin-bottom:14px" id="addFbMeetingDate"></div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:4px">어르신 <span style="color:var(--danger)">*</span></div>
+        <input type="text" id="addFbResident" list="addFbResidentList" placeholder="이름 입력 또는 선택"
+          style="width:100%;box-sizing:border-box" autocomplete="off">
+        <datalist id="addFbResidentList"></datalist>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:12px;font-weight:600;margin-bottom:4px">담당팀 <span style="color:var(--danger)">*</span></div>
+          <select id="addFbDept" style="width:100%;box-sizing:border-box">
+            <option value="nursing">💉 간호팀</option>
+            <option value="welfare">🤝 복지팀</option>
+            <option value="both">💉🤝 공통</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;margin-bottom:4px">우선순위</div>
+          <select id="addFbPriority" style="width:100%;box-sizing:border-box">
+            <option value="normal">일반</option>
+            <option value="high">⚠️ 즉시처리</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:4px">내용 <span style="color:var(--danger)">*</span></div>
+        <textarea id="addFbText" style="min-height:90px;width:100%;box-sizing:border-box"
+          placeholder="피드백 내용을 입력하세요..."></textarea>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn btn-primary btn-sm" onclick="confirmAddFb()">➕ 추가</button>
+      <button class="btn btn-outline btn-sm" onclick="closeAddFbModal()">취소</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ 피드백 편집 모달 ══ -->
 <div class="modal-ov" id="fbEditModal">
   <div class="modal" style="max-width:500px">
@@ -1371,6 +1413,12 @@ function renderDates() {
         </div>
         ${m.keyIssues?.length?`<div class="key-issues">${m.keyIssues.map(k=>`<span class="ki-chip">${esc(k)}</span>`).join('')}</div>`:''}
         ${renderMeetingResidents(m)}
+        <div style="padding:10px 14px 6px;border-top:1px dashed var(--g200);margin-top:8px">
+          <button onclick="event.stopPropagation();openAddFbModal('${m.id}')"
+            style="background:var(--primary-light);color:var(--primary);border:1px dashed var(--primary);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;width:100%;text-align:center">
+            ➕ 어르신 피드백 추가
+          </button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -2220,6 +2268,80 @@ function promptChangeName(userId, currentName){
     document.getElementById('userNameDisp').textContent=nw+'님';
   }
   save();renderUserList();showToast(userId+' 이름 변경됨: '+nw,'ok');
+}
+
+// ══════════════════════════
+// 수동 피드백 추가
+// ══════════════════════════
+let addFbTargetMeetingId = null;
+
+function openAddFbModal(meetingId) {
+  if (!currentUser) { showToast('로그인 후 이용하세요', 'err'); return; }
+  const m = meetings.find(x => x.id === meetingId);
+  if (!m) return;
+  addFbTargetMeetingId = meetingId;
+
+  // 어르신 목록 갱신
+  const dl = document.getElementById('addFbResidentList');
+  if (dl) dl.innerHTML = residentNames.map(r => `<option value="${resName(r)}">`).join('');
+
+  document.getElementById('addFbMeetingDate').textContent = '📅 ' + m.date + ' 회의록';
+  document.getElementById('addFbResident').value = '';
+  document.getElementById('addFbDept').value = 'nursing';
+  document.getElementById('addFbPriority').value = 'normal';
+  document.getElementById('addFbText').value = '';
+  document.getElementById('addFbModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('addFbResident').focus(), 100);
+}
+
+function closeAddFbModal() {
+  document.getElementById('addFbModal').style.display = 'none';
+  addFbTargetMeetingId = null;
+}
+
+async function confirmAddFb() {
+  const resident = document.getElementById('addFbResident').value.trim();
+  const dept = document.getElementById('addFbDept').value;
+  const priority = document.getElementById('addFbPriority').value;
+  const text = document.getElementById('addFbText').value.trim();
+
+  if (!resident) { showToast('어르신 이름을 입력하세요', 'err'); return; }
+  if (!text) { showToast('내용을 입력하세요', 'err'); return; }
+
+  const m = meetings.find(x => x.id === addFbTargetMeetingId);
+  if (!m) return;
+
+  const newFb = {
+    id: rand(),
+    resident,
+    dept,
+    priority,
+    text,
+    manual: true   // 수동 추가 표시
+  };
+
+  m.feedbacks.push(newFb);
+  closeAddFbModal();
+  save();
+  renderAll();
+  showToast(resident + ' 어르신 피드백 추가됨', 'ok');
+
+  // DB에 저장
+  try {
+    await sbFetch('/feedbacks', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([{
+        id: newFb.id,
+        meeting_id: m.id,
+        resident: newFb.resident,
+        dept: newFb.dept,
+        priority: newFb.priority,
+        text: newFb.text,
+        original_name: newFb.resident
+      }])
+    });
+  } catch(e) { console.warn('feedback DB save failed', e); }
 }
 
 // ══════════════════════════
