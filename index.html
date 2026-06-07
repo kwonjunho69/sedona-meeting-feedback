@@ -270,11 +270,11 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 </header>
 
 <div class="nav">
-  <div class="ntab active" onclick="switchTab('input')">📝 회의록 입력</div>
-  <div class="ntab" onclick="switchTab('dates')">📅 일자별 요약</div>
+  <div class="ntab active" onclick="switchTab('resview')">👤 어르신별 <span class="nbadge" id="resviewBadge" style="display:none"></span></div>
   <div class="ntab" onclick="switchTab('nursing')">💉 간호팀 <span class="nbadge" id="nursingBadge" style="display:none"></span></div>
   <div class="ntab" onclick="switchTab('welfare')">🤝 복지팀 <span class="nbadge" id="welfareBadge" style="display:none"></span></div>
-  <div class="ntab" onclick="switchTab('resview')">👤 어르신별 <span class="nbadge" id="resviewBadge" style="display:none"></span></div>
+  <div class="ntab" onclick="switchTab('input')">📝 회의록 입력</div>
+  <div class="ntab" onclick="switchTab('dates')">📅 일자별 요약</div>
   <div class="ntab" onclick="switchTab('residents')">👥 어르신 명단</div>
   <div class="ntab" id="adminTab" onclick="switchTab('admin')" style="display:none">⚙️ 사용자 관리</div>
 </div>
@@ -508,6 +508,14 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
       <input type="password" id="curPw" placeholder="현재 비밀번호" style="flex:1">
       <input type="password" id="newPw" placeholder="새 비밀번호" style="flex:1">
       <button class="btn btn-outline btn-sm" onclick="changePw()">변경</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ptitle">✏️ 내 이름 변경</div>
+    <div style="font-size:12px;color:var(--g500);margin-bottom:8px">화면에 표시되는 이름을 변경합니다.</div>
+    <div class="row">
+      <input type="text" id="changeNameInput" placeholder="새 이름 입력" maxlength="10" style="flex:1">
+      <button class="btn btn-outline btn-sm" onclick="changeName()">변경</button>
     </div>
   </div>
 </div>
@@ -1438,6 +1446,50 @@ function renderMeetingResidents(m) {
   }).join('');
 }
 
+// ── 피드백 이력 삭제 ──
+function deleteFbLog(meetingId, feedbackId, logIdx) {
+  if (!confirm('이 처리이력을 삭제하시겠습니까?')) return;
+  const m = meetings.find(x=>x.id===meetingId);
+  if (!m || !m.feedbackStatus || !m.feedbackStatus[feedbackId]) return;
+  const st = m.feedbackStatus[feedbackId];
+  st.logs.splice(logIdx, 1);
+  // 이력이 모두 삭제되면 미처리로 복귀
+  if (st.logs.length === 0) st.done = false;
+  saveFbStatusToDB(meetingId, feedbackId);
+  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  renderAll();
+  showToast(st.logs.length === 0 ? '이력 삭제 — 미처리로 복귀됨' : '이력 삭제됨');
+}
+
+// ── 피드백 행(체크박스+이력) 공통 렌더러 ── (날짜탭·간호팀·복지팀·어르신별 공통 사용)
+function renderFbRowHtml(m, f) {
+  const fbDone = getFbDone(m, f.id);
+  const logs = getFbStatus(m, f.id).logs || [];
+  const logsHtml = logs.length ? `<div class="fb-logs">${logs.map((lg, idx) => `
+    <div class="fb-log-entry ${lg.type==='done'?'log-done-entry':'log-add-entry'}">
+      <span class="log-badge ${lg.type==='done'?'log-badge-done':'log-badge-add'}">${lg.type==='done'?'처리완료':'추가처리'}</span>
+      <span class="log-who">${esc(lg.user||'')}</span>
+      <span class="log-at">${esc(lg.at||'')}</span>
+      <button onclick="deleteFbLog('${m.id}','${f.id}',${idx})"
+        style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--g400);font-size:13px;padding:0 4px;flex-shrink:0" title="삭제">🗑️</button>
+      ${lg.note?`<div class="log-note-txt">${esc(lg.note)}</div>`:''}
+    </div>`).join('')}</div>` : '';
+  return `<div class="fb-row${fbDone?' fb-row-done':''}">
+    <div class="fb-row-top">
+      <input type="checkbox" class="fb-check" data-fid="${f.id}" ${fbDone?'checked':''}
+        onchange="toggleFbDone('${m.id}','${f.id}',this.checked)" title="처리완료 체크">
+      ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
+      <span class="fb-text${fbDone?' fb-text-done':''}">${esc(f.text)}</span>
+      <div class="fb-actions">
+        <button onclick="openAddLog('${m.id}','${f.id}')"
+          style="background:none;border:1px solid var(--g300);color:var(--g600);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap"
+          title="추가 처리 등록">➕ 추가처리</button>
+      </div>
+    </div>
+    ${logsHtml}
+  </div>`;
+}
+
 function renderDeptBlock(m, resident, teamDept, fbs) {
   const doneCnt = fbs.filter(f=>getFbDone(m,f.id)).length;
   const allDone = fbs.length > 0 && doneCnt === fbs.length;
@@ -1445,33 +1497,14 @@ function renderDeptBlock(m, resident, teamDept, fbs) {
   const blockId = `db-${m.id}-${btoa(encodeURIComponent(resident+teamDept)).slice(0,12)}`;
 
   const fbRowsHtml = fbs.map(f => {
-    const fbDone = getFbDone(m, f.id);
-    const st = getFbStatus(m, f.id);
-    const logs = st.logs || [];
-    const logsHtml = logs.length ? `<div class="fb-logs">${logs.map(lg=>`
-      <div class="fb-log-entry ${lg.type==='done'?'log-done-entry':'log-add-entry'}">
-        <span class="log-badge ${lg.type==='done'?'log-badge-done':'log-badge-add'}">${lg.type==='done'?'처리완료':'추가처리'}</span>
-        <span class="log-who">${esc(lg.user||'')}</span>
-        <span class="log-at">${esc(lg.at||'')}</span>
-        ${lg.note?`<div class="log-note-txt">${esc(lg.note)}</div>`:''}
-      </div>`).join('')}</div>` : '';
-    return `<div class="fb-row${fbDone?' fb-row-done':''}">
-      <div class="fb-row-top">
-        <input type="checkbox" class="fb-check" data-fid="${f.id}" ${fbDone?'checked':''}
-          onchange="toggleFbDone('${m.id}','${f.id}',this.checked)" title="처리완료 체크">
-        ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
-        <span class="fb-text${fbDone?' fb-text-done':''}">${esc(f.text)}</span>
-        <div class="fb-actions">
-          <button onclick="openAddLog('${m.id}','${f.id}')"
-            style="background:none;border:1px solid var(--g300);color:var(--g600);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap"
-            title="추가 처리 등록">➕ 추가처리</button>
+    const row = renderFbRowHtml(m, f);
+    // 편집 버튼 삽입 (fb-actions 내 마지막)
+    return row.replace('</div>\n    </div>', `
           <button onclick="openFeedbackEdit('${m.id}','${f.id}')"
             style="background:none;border:none;cursor:pointer;color:var(--g400);font-size:13px;padding:0 2px"
             title="내용 편집">✏️</button>
         </div>
-      </div>
-      ${logsHtml}
-    </div>`;
+    </div>`);
   }).join('');
 
   return `<div class="dept-block">
@@ -1625,32 +1658,7 @@ function renderTeam(team) {
                 <span class="team-date-tag">${e.meeting.date}</span>
               </div>
               <div class="fb-list" style="border-top:none">
-                ${e.fbs.map(f=>{
-                  const fbDone=getFbDone(e.meeting,f.id);
-                  const st=getFbStatus(e.meeting,f.id);
-                  const logs=st.logs||[];
-                  const logsHtml=logs.length?`<div class="fb-logs">${logs.map(lg=>`
-                    <div class="fb-log-entry ${lg.type==='done'?'log-done-entry':'log-add-entry'}">
-                      <span class="log-badge ${lg.type==='done'?'log-badge-done':'log-badge-add'}">${lg.type==='done'?'처리완료':'추가처리'}</span>
-                      <span class="log-who">${esc(lg.user||'')}</span>
-                      <span class="log-at">${esc(lg.at||'')}</span>
-                      ${lg.note?`<div class="log-note-txt">${esc(lg.note)}</div>`:''}
-                    </div>`).join('')}</div>`:'';
-                  return `<div class="fb-row${fbDone?' fb-row-done':''}">
-                    <div class="fb-row-top">
-                      <input type="checkbox" class="fb-check" data-fid="${f.id}" ${fbDone?'checked':''}
-                        onchange="toggleFbDone('${e.meeting.id}','${f.id}',this.checked)" title="처리완료 체크">
-                      ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
-                      <span class="fb-text${fbDone?' fb-text-done':''}">${esc(f.text)}</span>
-                      <div class="fb-actions">
-                        <button onclick="openAddLog('${e.meeting.id}','${f.id}')"
-                          style="background:none;border:1px solid var(--g300);color:var(--g600);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap"
-                          title="추가 처리 등록">➕ 추가처리</button>
-                      </div>
-                    </div>
-                    ${logsHtml}
-                  </div>`;
-                }).join('')}
+                ${e.fbs.map(f=>renderFbRowHtml(e.meeting,f)).join('')}
               </div>
             </div>`;
           }).join('')}
@@ -1724,18 +1732,56 @@ function markAllDone(team) {
 
 function markFloorDone(team, floor){
   if(!currentUser){showToast('로그인 후 이용하세요','err');return;}
-  if(!confirm(`${floor==='?'?'호실 미지정':floor+'층'} 미처리 항목을 모두 처리완료로 표시하시겠습니까?`))return;
+  const flLabel=floor==='?'?'호실 미지정':floor+'층';
+  if(!confirm(`${flLabel} 미처리 항목을 모두 처리완료로 표시하시겠습니까?`))return;
+  const logEntry={
+    user: currentUser.name,
+    note: flLabel+' 일괄처리',
+    at: new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit'}),
+    type: 'done'
+  };
   let cnt=0;
+  const toSave=[];
   meetings.forEach(m=>{
     const match=f=>team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both');
-    const residents=[...new Set(m.feedbacks.filter(match).map(f=>f.resident))];
-    residents.forEach(res=>{
-      if(getResidentFloor(res)===floor && !isGroupDone(m,res,team)){
-        setStatus(m,res,team,true,'');cnt++;
+    m.feedbacks.filter(match).forEach(f=>{
+      if(getResidentFloor(f.resident)===floor && !getFbDone(m,f.id)){
+        setFbStatus(m,f.id,true,{...logEntry});
+        toSave.push({meetingId:m.id,feedbackId:f.id});
+        cnt++;
       }
     });
   });
-  save();renderAll();showToast(`${cnt}건 처리완료 표시됨`,'ok');
+  if(!cnt){showToast('모두 처리완료 상태입니다','ok');return;}
+  save();
+  toSave.forEach(({meetingId,feedbackId})=>saveFbStatusToDB(meetingId,feedbackId));
+  renderAll();showToast(`${cnt}건 처리완료 표시됨`,'ok');
+}
+
+function markResidentDone(resident){
+  if(!currentUser){showToast('로그인 후 이용하세요','err');return;}
+  if(!confirm(`${resident} 어르신의 모든 미처리 항목을 처리완료로 표시하시겠습니까?`))return;
+  const logEntry={
+    user: currentUser.name,
+    note: '어르신별 일괄처리',
+    at: new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit'}),
+    type: 'done'
+  };
+  let cnt=0;
+  const toSave=[];
+  meetings.forEach(m=>{
+    m.feedbacks.filter(f=>f.resident===resident).forEach(f=>{
+      if(!getFbDone(m,f.id)){
+        setFbStatus(m,f.id,true,{...logEntry});
+        toSave.push({meetingId:m.id,feedbackId:f.id});
+        cnt++;
+      }
+    });
+  });
+  if(!cnt){showToast('모두 처리완료 상태입니다','ok');return;}
+  save();
+  toSave.forEach(({meetingId,feedbackId})=>saveFbStatusToDB(meetingId,feedbackId));
+  renderAll();showToast(`${cnt}건 처리완료 표시됨`,'ok');
 }
 
 function exportTeam(team) {
@@ -1799,10 +1845,10 @@ function renderResview() {
     const entries = resMap[res];
     let totalGroups = 0, doneGroups = 0;
     entries.forEach(({meeting, fbs}) => {
-      const hasNurs = fbs.some(f=>f.dept==='nursing'||f.dept==='both');
-      const hasWelf = fbs.some(f=>f.dept==='welfare'||f.dept==='both');
-      if (hasNurs) { totalGroups++; if (isGroupDone(meeting,res,'nursing')) doneGroups++; }
-      if (hasWelf) { totalGroups++; if (isGroupDone(meeting,res,'welfare')) doneGroups++; }
+      fbs.forEach(f => {
+        totalGroups++;
+        if (getFbDone(meeting, f.id)) doneGroups++;
+      });
     });
     return { res, totalGroups, doneGroups, pendGroups: totalGroups-doneGroups };
   });
@@ -1837,39 +1883,25 @@ function renderResview() {
     const datesHtml=entries.map(({meeting,fbs})=>{
       const nursFbs=fbs.filter(f=>f.dept==='nursing'||f.dept==='both');
       const welfFbs=fbs.filter(f=>f.dept==='welfare'||f.dept==='both');
-      const nDone=isGroupDone(meeting,res,'nursing'), wDone=isGroupDone(meeting,res,'welfare');
-      const nNote=getGroupNote(meeting,res,'nursing'), wNote=getGroupNote(meeting,res,'welfare');
       let inner='';
       if (nursFbs.length) {
-        inner+=`<div style="margin-bottom:8px">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        inner+=`<div style="margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
             <span style="font-size:12px;font-weight:700;color:var(--nursing);background:var(--nursing-light);padding:2px 8px;border-radius:10px">💉 간호팀</span>
-            <div class="done-toggle ${nDone?'done':'pending'}" style="font-size:11px;padding:3px 8px"
-                 onclick="toggleGroup('${meeting.id}','${encodeURIComponent(res)}','nursing')">
-              <div class="chk">${nDone?'✓':''}</div>${nDone?'처리완료':'미처리'}</div>
           </div>
-          ${nursFbs.map(f=>`<div class="team-date-item" style="padding-left:8px">
-            ${f.priority==='high'?`<span class="pri-badge" style="margin-top:0;flex-shrink:0">⚠️</span>`:''}
-            <span>${esc(f.text)}</span></div>`).join('')}
-          ${nNote?`<div class="note-box" style="margin:6px 8px 0">
-            <div class="note-lbl">✅ 처리내용 <span class="note-date">${nNote.resolvedAt}</span></div>
-            ${nNote.note?esc(nNote.note):'<span style="color:var(--g400)">내용 없음</span>'}</div>`:''}
+          <div class="fb-list" style="border:1px solid var(--g100);border-radius:8px;overflow:hidden">
+            ${nursFbs.map(f=>renderFbRowHtml(meeting,f)).join('')}
+          </div>
         </div>`;
       }
       if (welfFbs.length) {
         inner+=`<div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
             <span style="font-size:12px;font-weight:700;color:var(--welfare);background:var(--welfare-light);padding:2px 8px;border-radius:10px">🤝 복지팀</span>
-            <div class="done-toggle ${wDone?'done':'pending'}" style="font-size:11px;padding:3px 8px"
-                 onclick="toggleGroup('${meeting.id}','${encodeURIComponent(res)}','welfare')">
-              <div class="chk">${wDone?'✓':''}</div>${wDone?'처리완료':'미처리'}</div>
           </div>
-          ${welfFbs.map(f=>`<div class="team-date-item" style="padding-left:8px">
-            ${f.priority==='high'?`<span class="pri-badge" style="margin-top:0;flex-shrink:0">⚠️</span>`:''}
-            <span>${esc(f.text)}</span></div>`).join('')}
-          ${wNote?`<div class="note-box" style="margin:6px 8px 0">
-            <div class="note-lbl">✅ 처리내용 <span class="note-date">${wNote.resolvedAt}</span></div>
-            ${wNote.note?esc(wNote.note):'<span style="color:var(--g400)">내용 없음</span>'}</div>`:''}
+          <div class="fb-list" style="border:1px solid var(--g100);border-radius:8px;overflow:hidden">
+            ${welfFbs.map(f=>renderFbRowHtml(meeting,f)).join('')}
+          </div>
         </div>`;
       }
       return `<div class="team-date-row" style="align-items:flex-start">
@@ -1877,6 +1909,7 @@ function renderResview() {
         <div style="flex:1">${inner}</div>
       </div>`;
     }).join('');
+
     return `<div class="team-res-card">
       <div class="team-res-head" onclick="toggleTeamRes('${bodyId}')">
         <span style="font-size:18px">👤</span>
@@ -1888,6 +1921,7 @@ function renderResview() {
             ?`<span style="font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;background:var(--danger-light);color:var(--danger)">미처리 ${pendGroups}건</span>`
             :`<span style="font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;background:var(--success-light);color:var(--success)">✅ 완료</span>`}
           <span style="font-size:12px;color:var(--g500)">${entries.length}회 기록</span>
+          ${pendGroups>0?`<button onclick="event.stopPropagation();markResidentDone('${esc(res)}')" style="background:var(--success);color:#fff;border:none;border-radius:8px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer">✅ 전체처리</button>`:''}
         </div>
         <span class="collapse-arrow open" id="arr-${bodyId}" style="margin-left:8px">▲</span>
       </div>
@@ -1917,12 +1951,10 @@ function getMeetingGroups(m) {
 
 function updateAllBadges() {
   const nursPend=meetings.reduce((acc,m)=>{
-    const r=[...new Set(m.feedbacks.filter(f=>f.dept==='nursing'||f.dept==='both').map(f=>f.resident))];
-    return acc+r.filter(res=>!isGroupDone(m,res,'nursing')).length;
+    return acc+m.feedbacks.filter(f=>(f.dept==='nursing'||f.dept==='both')&&!getFbDone(m,f.id)).length;
   },0);
   const welfPend=meetings.reduce((acc,m)=>{
-    const r=[...new Set(m.feedbacks.filter(f=>f.dept==='welfare'||f.dept==='both').map(f=>f.resident))];
-    return acc+r.filter(res=>!isGroupDone(m,res,'welfare')).length;
+    return acc+m.feedbacks.filter(f=>(f.dept==='welfare'||f.dept==='both')&&!getFbDone(m,f.id)).length;
   },0);
   const nb=document.getElementById('nursingBadge'), wb=document.getElementById('welfareBadge');
   nb.style.display=nursPend>0?'inline-block':'none'; nb.textContent=nursPend;
@@ -1936,7 +1968,6 @@ function renderAll() {
   renderDates(); renderTeam('nursing'); renderTeam('welfare'); renderResview(); updateAllBadges();
 }
 function renderCurrentTab() {
-  // 현재 활성 탭만 다시 렌더 (상태 유지)
   updateAllBadges();
   if(currentTab==='dates') renderDates();
   else if(currentTab==='nursing') renderTeam('nursing');
@@ -1951,7 +1982,7 @@ function switchTab(name) {
   document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
-  const idx={input:0,dates:1,nursing:2,welfare:3,resview:4,residents:5,admin:6};
+  const idx={resview:0,nursing:1,welfare:2,input:3,dates:4,residents:5,admin:6};
   document.querySelectorAll('.ntab')[idx[name]].classList.add('active');
   if(name==='dates') renderDates();
   else if(name==='nursing') renderTeam('nursing');
@@ -1980,281 +2011,374 @@ function addName(){
   if(!n)return;
   if(residentNames.some(r=>resName(r)===n)){showToast('이미 등록됨','err');return;}
   residentNames.push({name:n,room:rm});
-  save();renderNames();inp.value='';if(ri)ri.value='';showToast('등록됨','ok');
-}
-function delName(i){
-  residentNames.splice(i,1);
-  save();renderNames();showToast('삭제됨');
+  save();renderNames();inp.value='';if(ri)ri.value='';showToast(`${n} 추가됨`);
 }
 function addBulk(){
-  const lines=document.getElementById('bulkNames').value.split('\n');
-  let cnt=0;
-  lines.forEach(line=>{
-    const parts=line.trim().split(/\s+/);
-    if(!parts[0])return;
-    const n=parts[0], rm=parts[1]||'';
-    if(!residentNames.some(r=>resName(r)===n)){
-      residentNames.push({name:n,room:rm});cnt++;
-    }
+  const raw=document.getElementById('bulkNames').value;
+  const lines=raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  let added=0;
+  lines.forEach(l=>{
+    const parts=l.split(/\s+/), n=parts[0], rm=parts[1]||'';
+    if(!n)return;
+    if(!residentNames.some(r=>resName(r)===n)){residentNames.push({name:n,room:rm});added++;}
   });
-  if(cnt>0){save();renderNames();document.getElementById('bulkNames').value='';showToast(cnt+'명 추가됨','ok');}
-  else showToast('추가할 항목 없음','err');
+  save();renderNames();document.getElementById('bulkNames').value='';showToast(`${added}명 추가됨`);
 }
-function loadNameFile(ev){
-  const f=ev.target.files[0]; if(!f)return;
-  const r=new FileReader();
-  r.onload=e=>{
-    const lines=e.target.result.split('\n');
-    let cnt=0;
-    lines.forEach(line=>{
-      const parts=line.trim().split(/\s+/);
-      if(!parts[0])return;
-      const n=parts[0],rm=parts[1]||'';
-      if(!residentNames.some(r=>resName(r)===n)){residentNames.push({name:n,room:rm});cnt++;}
-    });
-    save();renderNames();showToast(cnt+'명 불러옴','ok');
-  };
-  r.readAsText(f,'utf-8');
-  ev.target.value='';
+function delName(i){
+  const n=residentNames[i];if(!confirm(`"${n}" 삭제?`))return;
+  residentNames.splice(i,1);save();renderNames();showToast(`${n} 삭제됨`);
 }
 function clearNames(){
-  if(!confirm('전체 어르신 명단을 삭제하시겠습니까?'))return;
-  residentNames=[];
-  save();renderNames();showToast('삭제됨');
+  if(!confirm('전체 삭제?'))return;residentNames=[];save();renderNames();showToast('초기화됨');
+}
+function loadNameFile(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    const lines=ev.target.result.split('\n').map(l=>l.trim().replace(/\r/g,'')).filter(Boolean);
+    let added=0;
+    lines.forEach(l=>{
+      const parts=l.split(/\s+/),n=parts[0],rm=parts[1]||'';
+      if(!n)return;
+      if(!residentNames.some(r=>resName(r)===n)){residentNames.push({name:n,room:rm});added++;}
+    });
+    save();renderNames();showToast(`${added}명 추가됨`,'ok');
+  };
+  r.readAsText(f,'UTF-8');e.target.value='';
 }
 
-// ── 로그인 / 사용자 관리 ──
-function doLogin(){
-  const id=document.getElementById('loginId').value.trim();
-  const pw=document.getElementById('loginPw').value;
-  const u=users.find(x=>x.id===id&&x.password===pw);
-  if(!u){document.getElementById('loginErr').style.display='block';return;}
-  currentUser={id:u.id,name:u.name,role:u.role};
-  document.getElementById('loginOverlay').style.display='none';
-  document.getElementById('userInfo').style.display='flex';
-  document.getElementById('userNameDisp').textContent=u.name;
-  if(u.role==='admin') document.getElementById('adminTab').style.display='';
-  showToast(u.name+'님 로그인','ok');
+// ── FILE ──
+function loadFile(e){
+  const f=e.target.files[0];if(!f)return;
+  document.getElementById('fileLabel').textContent=`📄 ${f.name}`;
+  const r=new FileReader();
+  r.onload=ev=>{
+    const t=ev.target.result;
+    if(t.includes('?')){const r2=new FileReader();r2.onload=ev2=>{document.getElementById('meetingText').value=ev2.target.result;};r2.readAsText(f,'EUC-KR');}
+    else document.getElementById('meetingText').value=t;
+    showToast(`${f.name} 로드됨`);
+  };
+  r.readAsText(f,'UTF-8');e.target.value='';
 }
-function doLogout(){
-  currentUser=null;
-  document.getElementById('loginOverlay').style.display='flex';
-  document.getElementById('userInfo').style.display='none';
-  document.getElementById('adminTab').style.display='none';
-  document.getElementById('loginId').value='';
-  document.getElementById('loginPw').value='';
-  document.getElementById('loginErr').style.display='none';
-}
-function renderUserList(){
-  document.getElementById('userCount').textContent='('+users.length+'명)';
-  document.getElementById('userList').innerHTML=users.map(u=>`
-    <div class="row" style="padding:7px 0;border-bottom:1px solid var(--g100)">
-      <span style="flex:1;font-size:13px;font-weight:600">${esc(u.id)}</span>
-      <span style="flex:1;font-size:13px;color:var(--g600)">${esc(u.name)}</span>
-      <span style="flex:1;font-size:12px;color:var(--g500)">${u.role==='admin'?'🔑 관리자':'👤 직원'}</span>
-      ${u.id!=='admin'?`<button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="delUser('${u.id}')">삭제</button>`:'<span style="width:58px"></span>'}
-    </div>`).join('');
-}
-function addUser(){
-  const id=document.getElementById('newUserId').value.trim();
-  const name=document.getElementById('newUserName').value.trim();
-  const pw=document.getElementById('newUserPw').value;
-  if(!id||!name||!pw){showToast('모든 항목 입력','err');return;}
-  if(users.find(u=>u.id===id)){showToast('이미 존재하는 아이디','err');return;}
-  users.push({id,name,password:pw,role:'user'});
-  save();renderUserList();
-  document.getElementById('newUserId').value='';
-  document.getElementById('newUserName').value='';
-  document.getElementById('newUserPw').value='';
-  showToast('추가됨','ok');
-}
-function delUser(id){
-  if(!confirm(id+' 사용자를 삭제하시겠습니까?'))return;
-  users=users.filter(u=>u.id!==id);
-  save();renderUserList();showToast('삭제됨');
-}
-function changePw(){
-  const cur=document.getElementById('curPw').value;
-  const nw=document.getElementById('newPw').value;
-  if(!currentUser){showToast('로그인 필요','err');return;}
-  const u=users.find(x=>x.id===currentUser.id);
-  if(!u||u.password!==cur){showToast('현재 비밀번호 불일치','err');return;}
-  if(!nw){showToast('새 비밀번호 입력','err');return;}
-  u.password=nw;
-  save();showToast('비밀번호 변경됨','ok');
-  document.getElementById('curPw').value='';
-  document.getElementById('newPw').value='';
-}
-
-// ── 피드백 편집 ──
-let editingMeetingId=null, editingFbId=null;
-function openFeedbackEdit(meetingId, fbId){
-  if(!currentUser){showToast('로그인 후 이용하세요','err');return;}
-  const m=meetings.find(x=>x.id===meetingId);
-  if(!m)return;
-  const fb=m.feedbacks.find(f=>f.id===fbId);
-  if(!fb)return;
-  editingMeetingId=meetingId; editingFbId=fbId;
-  document.getElementById('fbEditResident').value=fb.resident;
-  document.getElementById('fbEditDept').value=fb.dept||'nursing';
-  document.getElementById('fbEditPriority').value=fb.priority||'normal';
-  document.getElementById('fbEditText').value=fb.text||'';
-  // datalist 채우기
-  const dl=document.getElementById('residentDatalist');
-  dl.innerHTML=residentNames.map(r=>`<option value="${resName(r)}">`).join('');
-  document.getElementById('fbEditModal').classList.add('open');
-}
-function saveFeedbackEdit(){
-  const m=meetings.find(x=>x.id===editingMeetingId);
-  if(!m)return;
-  const fb=m.feedbacks.find(f=>f.id===editingFbId);
-  if(!fb)return;
-  fb.resident=document.getElementById('fbEditResident').value.trim()||fb.resident;
-  fb.dept=document.getElementById('fbEditDept').value;
-  fb.priority=document.getElementById('fbEditPriority').value;
-  fb.text=document.getElementById('fbEditText').value.trim()||fb.text;
-  save();renderAll();closeFbEditModal();showToast('수정됨','ok');
-}
-function closeFbEditModal(){
-  document.getElementById('fbEditModal').classList.remove('open');
-  editingMeetingId=null;editingFbId=null;
-}
-function deleteFeedback(){
-  if(!confirm('이 피드백을 삭제하시겠습니까?'))return;
-  const m=meetings.find(x=>x.id===editingMeetingId);
-  if(!m)return;
-  m.feedbacks=m.feedbacks.filter(f=>f.id!==editingFbId);
-  // Supabase에서도 삭제
-  sbFetch('/feedbacks?id=eq.'+editingFbId,{method:'DELETE',headers:{'Prefer':'return=minimal'}}).catch(console.error);
-  save();renderAll();closeFbEditModal();showToast('삭제됨');
-}
-
-// ── 요약 편집 ──
-let editingSummaryId=null;
-function openSummaryEdit(meetingId){
-  if(!currentUser){showToast('로그인 후 이용하세요','err');return;}
-  const m=meetings.find(x=>x.id===meetingId);
-  if(!m)return;
-  editingSummaryId=meetingId;
-  document.getElementById('summaryEditText').value=m.summary||'';
-  document.getElementById('summaryEditIssues').value=(m.keyIssues||[]).join('\n');
-  document.getElementById('summaryEditModal').classList.add('open');
-}
-function saveSummaryEdit(){
-  const m=meetings.find(x=>x.id===editingSummaryId);
-  if(!m)return;
-  m.summary=document.getElementById('summaryEditText').value.trim();
-  m.keyIssues=document.getElementById('summaryEditIssues').value.split('\n').map(s=>s.trim()).filter(Boolean);
-  save();renderAll();closeSummaryEditModal();showToast('수정됨','ok');
-}
-function closeSummaryEditModal(){
-  document.getElementById('summaryEditModal').classList.remove('open');
-  editingSummaryId=null;
-}
-
-// ── 채팅 UI ──
-function appendHtmlBubble(html){
-  const w=document.getElementById('chatWrap');
-  const div=document.createElement('div');
-  div.className='cmsg';
-  div.innerHTML=`<div class="cavatar ai">🤖</div>
-    <div class="cbubble ai">${html}</div>`;
-  w.appendChild(div);
-  w.scrollTop=w.scrollHeight;
-  return div;
-}
-function appendBubble(role,text){
-  const w=document.getElementById('chatWrap');
-  const div=document.createElement('div');
-  div.className='cmsg'+(role==='user'?' user':'');
-  div.innerHTML=`<div class="cavatar ${role==='user'?'user':'ai'}">${role==='user'?'👤':'🤖'}</div>
-    <div class="cbubble ${role==='user'?'user':'ai'}"><pre>${esc(text)}</pre></div>`;
-  w.appendChild(div);
-  w.scrollTop=w.scrollHeight;
-  return div;
-}
-function appendTyping(){
-  const w=document.getElementById('chatWrap');
-  const div=document.createElement('div');
-  div.className='cmsg';
-  div.id='typing-'+Date.now();
-  div.innerHTML=`<div class="cavatar ai">🤖</div>
-    <div class="cbubble ai typing"><span>●</span><span>●</span><span>●</span></div>`;
-  w.appendChild(div);
-  w.scrollTop=w.scrollHeight;
-  return div.id;
-}
-function removeTyping(id){
-  const el=document.getElementById(id);
-  if(el)el.remove();
-}
-
-// ── 동기화 라벨 ──
-let lastSyncTime=null;
-function updateSyncLabel(){
-  if(!lastSyncTime){document.getElementById('syncTime').textContent='동기화';return;}
-  const diff=Math.floor((Date.now()-lastSyncTime)/1000);
-  const txt=diff<60?diff+'초 전':Math.floor(diff/60)+'분 전';
-  document.getElementById('syncTime').textContent=txt;
-}
-setInterval(updateSyncLabel,30000);
-async function manualSync(){
-  const btn=document.getElementById('syncBtn');
-  btn.disabled=true;
-  await syncFromDB();
-  btn.disabled=false;
-}
-
-// ── 파일 업로드 ──
-function dragOver(e){e.preventDefault();document.getElementById('uploadZone').classList.add('drag');}
-function dragLeave(){document.getElementById('uploadZone').classList.remove('drag');}
+function dragOver(e){e.preventDefault();document.getElementById('uploadZone').classList.add('drag')}
+function dragLeave(){document.getElementById('uploadZone').classList.remove('drag')}
 function dropFile(e){
   e.preventDefault();dragLeave();
-  const f=e.dataTransfer.files[0];if(!f)return;
-  readTextFile(f);
-}
-function loadFile(e){readTextFile(e.target.files[0]);}
-function readTextFile(f){
-  if(!f)return;
-  const r=new FileReader();
-  r.onload=e=>{
-    document.getElementById('meetingText').value=e.target.result;
-    document.getElementById('fileLabel').textContent=f.name;
-  };
-  r.readAsText(f,'utf-8');
+  const f=e.dataTransfer.files[0];
+  if(f?.name.endsWith('.txt')){const r=new FileReader();r.onload=ev=>{document.getElementById('meetingText').value=ev.target.result;showToast(`${f.name} 로드됨`);};r.readAsText(f,'UTF-8');}
+  else showToast('.txt 파일만 지원','err');
 }
 function clearInput(){
   document.getElementById('meetingText').value='';
-  document.getElementById('meetingDate').value='';
   document.getElementById('fileLabel').textContent='';
   document.getElementById('chatPanel').style.display='none';
   document.getElementById('chatWrap').innerHTML='';
 }
 
-// ── 유틸 ──
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function rand(){return Math.random().toString(36).slice(2)+Date.now().toString(36);}
-let _toastTimer=null;
+// ── CHAT ──
+function appendBubble(role,text){
+  const c=document.getElementById('chatWrap');
+  const d=document.createElement('div');d.className=`cmsg ${role}`;
+  d.innerHTML=`<div class="cavatar ${role}">${role==='ai'?'🤖':'👤'}</div><div class="cbubble ${role}"><pre>${esc(text)}</pre></div>`;
+  c.appendChild(d);c.scrollTop=c.scrollHeight;return d;
+}
+function appendTyping(){
+  const c=document.getElementById('chatWrap'),id='typ-'+Date.now();
+  const d=document.createElement('div');d.className='cmsg ai';d.id=id;
+  d.innerHTML=`<div class="cavatar ai">🤖</div><div class="cbubble ai"><span class="typing"><span>●</span><span>●</span><span>●</span></span> 분석 중...</div>`;
+  c.appendChild(d);c.scrollTop=c.scrollHeight;return id;
+}
+function removeTyping(id){const e=document.getElementById(id);if(e)e.remove();}
+
+// ── UTILS ──
+function esc(t){return(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function rand(){return Math.random().toString(36).slice(2);}
+
+// ── LOGIN ──
+function doLogin(){
+  var id=document.getElementById('loginId').value.trim();
+  var pw=document.getElementById('loginPw').value;
+  if(id==='admin'&&pw==='1234'){
+    var a={id:'admin',name:'관리자',role:'admin',password:'1234'};
+    if(!users.find(function(u){return u.id==='admin';}))users.unshift(a);
+    loginSuccess(a);return;
+  }
+  var u=users.find(function(x){return x.id===id&&x.password===pw;});
+  if(!u){document.getElementById('loginErr').style.display='block';return;}
+  loginSuccess(u);
+}
+function loginSuccess(u){
+  currentUser=u;
+  sessionStorage.setItem('sd_user', JSON.stringify({id:u.id,name:u.name,role:u.role}));
+  document.getElementById('loginOverlay').style.display='none';
+  document.getElementById('userInfo').style.display='flex';
+  document.getElementById('userNameDisp').textContent=u.name+'님';
+  if(u.role==='admin') document.getElementById('adminTab').style.display='';
+  document.getElementById('loginErr').style.display='none';
+  switchTab('resview');
+  showToast(u.name+'님 로그인','ok');
+}
+function doLogout(){
+  if(!confirm('로그아웃 하시겠습니까?'))return;
+  currentUser=null;
+  sessionStorage.removeItem('sd_user');
+  document.getElementById('loginOverlay').style.display='flex';
+  document.getElementById('userInfo').style.display='none';
+  document.getElementById('adminTab').style.display='none';
+  document.getElementById('loginId').value='';
+  document.getElementById('loginPw').value='';
+}
+
+// ── 사용자 관리 ──
+function renderUserList(){
+  document.getElementById('userCount').textContent='('+users.length+'명)';
+  var ul=document.getElementById('userList');
+  if(!ul)return;
+  var rows=users.map(function(u){
+    var isSelf=currentUser&&currentUser.id===u.id;
+    var isAdmin=u.id==='admin';
+    var roleStyle=u.role==='admin'
+      ?'background:var(--primary-light);color:var(--primary)'
+      :'background:var(--g100);color:var(--g600)';
+    var roleLabel=u.role==='admin'?'관리자':'일반';
+    var selfMark=isSelf?'<span style="font-size:10px;color:var(--primary);margin-left:3px">(나)</span>':'';
+    var delBtnHtml=isAdmin
+      ?'<button class="btn btn-outline btn-sm" style="font-size:11px;opacity:.3" disabled>삭제</button>'
+      :'<button class="btn btn-outline btn-sm" style="font-size:11px;color:var(--danger)" onclick="delUser(\''+u.id+'\')">삭제</button>';
+    var nameBtnHtml='<button class="btn btn-outline btn-sm" style="font-size:11px" onclick="promptChangeName(\''+u.id+'\',\''+u.name+'\')">✏️</button>';
+    return '<div style="display:grid;grid-template-columns:1fr 1fr 80px auto auto;gap:8px;padding:8px 0;'
+      +'font-size:13px;border-bottom:1px solid var(--g100);align-items:center">'
+      +'<span style="font-weight:600">'+esc(u.id)+selfMark+'</span>'
+      +'<span>'+esc(u.name)+'</span>'
+      +'<span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:700;text-align:center;'+roleStyle+'">'+roleLabel+'</span>'
+      +nameBtnHtml
+      +delBtnHtml+'</div>';
+  }).join('');
+  ul.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr 80px auto auto;gap:8px;padding:8px 0;'
+    +'font-size:12px;font-weight:700;color:var(--g500);border-bottom:1px solid var(--g200)">'
+    +'<span>아이디</span><span>이름</span><span>역할</span><span></span><span></span></div>'+rows;
+}
+function addUser(){
+  var id=document.getElementById('newUserId').value.trim();
+  var nm=document.getElementById('newUserName').value.trim();
+  var pw=document.getElementById('newUserPw').value;
+  if(!id||!nm||!pw){showToast('아이디, 이름, 비밀번호를 모두 입력하세요','err');return;}
+  if(users.find(function(u){return u.id===id;})){showToast('이미 있는 아이디입니다','err');return;}
+  users.push({id:id,name:nm,password:pw,role:'user'});
+  save();renderUserList();
+  document.getElementById('newUserId').value='';
+  document.getElementById('newUserName').value='';
+  document.getElementById('newUserPw').value='';
+  showToast(nm+' 추가됨','ok');
+}
+async function addUserToDB(u){
+  await sbFetch('/app_users','POST',{id:u.id,name:u.name,password:u.password,role:u.role||'user'},{
+    'Prefer':'resolution=merge-duplicates',
+    'Content-Type':'application/json'
+  });
+}
+function delUser(id){
+  var u=users.find(function(x){return x.id===id;});
+  if(!u||!confirm('"'+u.name+'" 계정을 삭제하시겠습니까?'))return;
+  users=users.filter(function(x){return x.id!==id;});
+  save();renderUserList();showToast(u.name+' 삭제됨');
+}
+function changePw(){
+  var cur=document.getElementById('curPw').value;
+  var nw=document.getElementById('newPw').value;
+  if(!currentUser){showToast('로그인 필요','err');return;}
+  var u=users.find(function(x){return x.id===currentUser.id;});
+  if(!u||u.password!==cur){showToast('현재 비밀번호가 틀립니다','err');return;}
+  if(!nw){showToast('새 비밀번호를 입력하세요','err');return;}
+  u.password=nw;save();showToast('비밀번호 변경됨','ok');
+  document.getElementById('curPw').value='';
+  document.getElementById('newPw').value='';
+}
+function changeName(){
+  var nw=document.getElementById('changeNameInput').value.trim();
+  if(!currentUser){showToast('로그인 필요','err');return;}
+  if(!nw){showToast('새 이름을 입력하세요','err');return;}
+  var u=users.find(function(x){return x.id===currentUser.id;});
+  if(!u){showToast('사용자 정보를 찾을 수 없습니다','err');return;}
+  u.name=nw;
+  currentUser.name=nw;
+  sessionStorage.setItem('sd_user',JSON.stringify({id:u.id,name:u.name,role:u.role}));
+  document.getElementById('userNameDisp').textContent=nw+'님';
+  save();renderUserList();showToast('이름 변경됨: '+nw,'ok');
+  document.getElementById('changeNameInput').value='';
+}
+function promptChangeName(userId, currentName){
+  var nw=prompt('"'+userId+'" 사용자의 새 이름을 입력하세요:', currentName);
+  if(!nw||!nw.trim())return;
+  nw=nw.trim();
+  var u=users.find(function(x){return x.id===userId;});
+  if(!u)return;
+  u.name=nw;
+  if(currentUser&&currentUser.id===userId){
+    currentUser.name=nw;
+    sessionStorage.setItem('sd_user',JSON.stringify({id:u.id,name:u.name,role:u.role}));
+    document.getElementById('userNameDisp').textContent=nw+'님';
+  }
+  save();renderUserList();showToast(userId+' 이름 변경됨: '+nw,'ok');
+}
+
+// ══════════════════════════
+// 피드백 편집
+// ══════════════════════════
+let editTarget = null;
+let summaryEditTarget = null;
+
+function openFeedbackEdit(meetingId, feedbackId){
+  const m = meetings.find(x=>x.id===meetingId);
+  if(!m) return;
+  const f = m.feedbacks.find(x=>x.id===feedbackId);
+  if(!f) return;
+  editTarget = {meetingId, feedbackId};
+
+  const dl = document.getElementById('residentDatalist');
+  if(dl) dl.innerHTML = residentNames.map(r=>`<option value="${resName(r)}">`).join('');
+
+  document.getElementById('fbEditResident').value = f.resident;
+  document.getElementById('fbEditDept').value = f.dept || 'nursing';
+  document.getElementById('fbEditPriority').value = f.priority || 'normal';
+  document.getElementById('fbEditText').value = f.text;
+  document.getElementById('fbEditModal').classList.add('open');
+  setTimeout(()=>document.getElementById('fbEditText').focus(), 100);
+}
+
+function saveFeedbackEdit(){
+  if(!editTarget) return;
+  const m = meetings.find(x=>x.id===editTarget.meetingId);
+  if(!m) return;
+  const f = m.feedbacks.find(x=>x.id===editTarget.feedbackId);
+  if(!f) return;
+
+  const newResident = document.getElementById('fbEditResident').value.trim();
+  const newDept = document.getElementById('fbEditDept').value;
+  const newPriority = document.getElementById('fbEditPriority').value;
+  const newText = document.getElementById('fbEditText').value.trim();
+
+  if(!newResident || !newText){ showToast('어르신 이름과 내용을 입력하세요','err'); return; }
+
+  if(f.resident !== newResident){
+    const oldKey = statusKey(f.resident, f.dept);
+    if(m.status) delete m.status[oldKey];
+  }
+
+  f.resident = newResident;
+  f.dept = newDept;
+  f.priority = newPriority;
+  f.text = newText;
+
+  closeFbEditModal();
+  save(); renderCurrentTab();
+  showToast('피드백 수정됨','ok');
+}
+
+function deleteFeedback(){
+  if(!editTarget) return;
+  if(!confirm('이 피드백 항목을 삭제하시겠습니까?')) return;
+  const m = meetings.find(x=>x.id===editTarget.meetingId);
+  if(!m) return;
+  m.feedbacks = m.feedbacks.filter(x=>x.id!==editTarget.feedbackId);
+  closeFbEditModal();
+  save(); renderCurrentTab();
+  showToast('삭제됨');
+}
+
+function closeFbEditModal(){
+  document.getElementById('fbEditModal').classList.remove('open');
+  editTarget = null;
+}
+
+// ══════════════════════════
+// 요약 편집
+// ══════════════════════════
+function openSummaryEdit(meetingId){
+  const m = meetings.find(x=>x.id===meetingId);
+  if(!m) return;
+  summaryEditTarget = meetingId;
+  document.getElementById('summaryEditText').value = m.summary || '';
+  document.getElementById('summaryEditIssues').value = (m.keyIssues||[]).join('\n');
+  document.getElementById('summaryEditModal').classList.add('open');
+  setTimeout(()=>document.getElementById('summaryEditText').focus(), 100);
+}
+
+function saveSummaryEdit(){
+  if(!summaryEditTarget) return;
+  const m = meetings.find(x=>x.id===summaryEditTarget);
+  if(!m) return;
+  m.summary = document.getElementById('summaryEditText').value.trim();
+  m.keyIssues = document.getElementById('summaryEditIssues').value
+    .split('\n').map(s=>s.trim()).filter(Boolean);
+  closeSummaryEditModal();
+  save(); renderDates();
+  showToast('요약 수정됨','ok');
+}
+
+function closeSummaryEditModal(){
+  document.getElementById('summaryEditModal').classList.remove('open');
+  summaryEditTarget = null;
+}
+
 function showToast(msg,type=''){
   const t=document.getElementById('toast');
   t.textContent=msg;t.className='toast show'+(type?' '+type:'');
-  clearTimeout(_toastTimer);
-  _toastTimer=setTimeout(()=>t.classList.remove('show'),2500);
+  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2500);
 }
 
 // ── INIT ──
-document.addEventListener('DOMContentLoaded', async()=>{
+window.onload = async () => {
   loadStorage();
-  updateApiStatus();
-  renderNames();
-  // 오늘 날짜 기본값
+
+  try {
+    const hash=new URLSearchParams(window.location.hash.slice(1));
+    let changed=false;
+    if(hash.get('api')){apiKey=hash.get('api');localStorage.setItem('sd_api',apiKey);changed=true;}
+    if(hash.get('m')){modelId=hash.get('m');localStorage.setItem('sd_model',modelId);}
+    if(changed){history.replaceState(null,'',window.location.pathname);}
+  }catch(e){}
+
+  renderNames();updateApiStatus();updateDbStatus();
   document.getElementById('meetingDate').value=new Date().toISOString().slice(0,10);
-  // DB에서 데이터 불러오기
-  const ok=await loadFromDB();
-  if(ok){renderAll();}
-  else{renderAll();}
-  updateDbStatus();
-});
+
+  {
+    const ok=await loadFromDB();
+    if(ok){renderAll();renderNames();}
+    else if(meetings.length>0){renderAll();}
+  }
+  updateAllBadges();
+
+  const savedSession = sessionStorage.getItem('sd_user');
+  if(savedSession){
+    try{
+      const su = JSON.parse(savedSession);
+      const u = su.id==='admin'
+        ? {id:'admin',name:'관리자',role:'admin',password:'1234'}
+        : users.find(x=>x.id===su.id);
+      if(u){ loginSuccess(u); }
+      else { sessionStorage.removeItem('sd_user'); document.getElementById('loginOverlay').style.display='flex'; }
+    }catch(e){
+      document.getElementById('loginOverlay').style.display='flex';
+    }
+  } else {
+    document.getElementById('loginOverlay').style.display='flex';
+  }
+
+  setInterval(async()=>{ await saveToDB(); updateSyncLabel(); }, 60000);
+  setInterval(updateSyncLabel, 10000);
+
+  document.addEventListener('visibilitychange', async()=>{
+    if(document.visibilityState==='visible'){
+      const ok=await loadFromDB();
+      if(ok){renderAll();renderNames();}
+    }
+  });
+
+  window.addEventListener('focus', async()=>{
+    { const ok=await loadFromDB(); if(ok){renderAll();renderNames();} }
+  });
+};
 </script>
 </body>
 </html>
