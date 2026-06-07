@@ -1203,22 +1203,72 @@ function renderDates() {
 }
 
 function renderMeetingResidents(m) {
-  const residents=[...new Set(m.feedbacks.map(f=>f.resident))];
-  return residents.map(res=>{
-    const rFbs=m.feedbacks.filter(f=>f.resident===res);
-    const corrected=rFbs.some(f=>f.corrected);
-    const nursFbs=rFbs.filter(f=>f.dept==='nursing'||f.dept==='both');
-    const welfFbs=rFbs.filter(f=>f.dept==='welfare'||f.dept==='both');
-    let html=`<div class="res-group">
-      <div class="res-group-header">
-        <span style="font-size:18px">👤</span>
-        <span class="res-group-name">${esc(res)} 어르신</span>
-        ${corrected?`<span class="corrected-badge">🔄 이름교정</span>`:''}
+  // 어르신 목록 추출 후 층별 → 호실 → 이름 순 정렬
+  const residents = [...new Set(m.feedbacks.map(f => f.resident))];
+
+  // 층/호실 정보 붙이기
+  const resInfo = residents.map(res => {
+    const rm = getResidentRoom(res);          // "301" 형태
+    const floor = rm ? rm.charAt(0) : '?';   // "3"
+    const roomNum = rm || '999';              // 호실 없으면 맨 뒤
+    return { res, rm, floor, roomNum };
+  });
+
+  // 층별 그룹핑
+  const floorMap = {};
+  resInfo.forEach(r => {
+    if (!floorMap[r.floor]) floorMap[r.floor] = [];
+    floorMap[r.floor].push(r);
+  });
+
+  // 층 정렬 (숫자 → '?' 맨 뒤)
+  const floors = Object.keys(floorMap).sort((a, b) =>
+    a === '?' ? 1 : b === '?' ? -1 : a.localeCompare(b, undefined, {numeric: true})
+  );
+
+  return floors.map(fl => {
+    // 같은 층 안에서 호실 → 이름 순 정렬
+    const flResidents = floorMap[fl].sort((a, b) => {
+      const rCmp = a.roomNum.localeCompare(b.roomNum, undefined, {numeric: true});
+      return rCmp !== 0 ? rCmp : a.res.localeCompare(b.res);
+    });
+
+    const flTotal = flResidents.length;
+    const flHigh = flResidents.filter(r =>
+      m.feedbacks.some(f => f.resident === r.res && f.priority === 'high')
+    ).length;
+
+    const floorLabel = fl === '?' ? '호실 미지정' : fl + '층';
+
+    const resHtml = flResidents.map(({ res, rm }) => {
+      const rFbs = m.feedbacks.filter(f => f.resident === res);
+      const corrected = rFbs.some(f => f.corrected && f.resident !== '미정');
+      const isUnmatched = res === '미정';
+      const nursFbs = rFbs.filter(f => f.dept === 'nursing' || f.dept === 'both');
+      const welfFbs = rFbs.filter(f => f.dept === 'welfare' || f.dept === 'both');
+      const hasHigh = rFbs.some(f => f.priority === 'high');
+
+      return `<div class="res-group" style="${hasHigh ? 'border-left:3px solid #dc2626' : ''}">
+        <div class="res-group-header">
+          <span style="font-size:16px">${isUnmatched ? '❓' : '👤'}</span>
+          <span class="res-group-name" style="${isUnmatched ? 'color:#b45309' : ''}">${esc(res)} 어르신</span>
+          ${rm ? `<span style="font-size:11px;background:var(--g200);color:var(--g600);padding:1px 7px;border-radius:10px;font-weight:600">${rm}호</span>` : ''}
+          ${hasHigh ? `<span style="font-size:11px;background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:10px;font-weight:700">🚨 즉시처리</span>` : ''}
+          ${corrected ? `<span class="corrected-badge">🔄 교정</span>` : ''}
+        </div>
+        ${nursFbs.length ? renderDeptBlock(m, res, 'nursing', nursFbs) : ''}
+        ${welfFbs.length ? renderDeptBlock(m, res, 'welfare', welfFbs) : ''}
       </div>`;
-    if (nursFbs.length) html+=renderDeptBlock(m, res, 'nursing', nursFbs);
-    if (welfFbs.length) html+=renderDeptBlock(m, res, 'welfare', welfFbs);
-    html+=`</div>`;
-    return html;
+    }).join('');
+
+    return `<div style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--g100);border-radius:8px;margin-bottom:6px;font-weight:700;font-size:13px;color:var(--g700)">
+        <span>🏢 ${floorLabel}</span>
+        <span style="font-size:11px;background:var(--primary);color:#fff;padding:1px 8px;border-radius:10px">${flTotal}명</span>
+        ${flHigh > 0 ? `<span style="font-size:11px;background:#fee2e2;color:#b91c1c;padding:1px 8px;border-radius:10px;font-weight:700">🚨 즉시처리 ${flHigh}명</span>` : ''}
+      </div>
+      ${resHtml}
+    </div>`;
   }).join('');
 }
 
