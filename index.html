@@ -630,6 +630,42 @@ function setStatus(meeting, resident, dept, done, note='') {
   }
 }
 
+// ── 어르신 이름 매칭 (AI 교정 보완) ──
+// 반환: { name, corrected, noMatch }
+function matchResidentName(inputName) {
+  const clean = n => (n || '').replace(/\s+/g, '');
+  const input = clean(inputName);
+  if (!input) return { name: '미정', corrected: true, noMatch: true };
+
+  // 등록 명단 없으면 원본 유지
+  if (!residentNames.length) return { name: input, corrected: false };
+
+  // 1. 정확히 일치
+  for (const r of residentNames) {
+    if (clean(resName(r)) === input) return { name: resName(r), corrected: false };
+  }
+
+  // 2. 유사도 점수: 동일 위치 글자 2점, 다른 위치에 존재 1점
+  let best = null, bestScore = 0;
+  for (const r of residentNames) {
+    const rn = clean(resName(r));
+    const maxLen = Math.max(input.length, rn.length);
+    let score = 0;
+    for (let i = 0; i < input.length; i++) {
+      if (i < rn.length && rn[i] === input[i]) score += 2;
+      else if (rn.includes(input[i])) score += 1;
+    }
+    const normalized = score / (maxLen * 2);
+    if (normalized > bestScore) { bestScore = normalized; best = resName(r); }
+  }
+
+  // 임계값 0.45: 3글자 중 2글자 동일 위치 일치 시 약 0.67로 통과
+  if (bestScore >= 0.45 && best) return { name: best, corrected: true };
+
+  // 매칭 실패 → 미정
+  return { name: '미정', corrected: true, noMatch: true };
+}
+
 // ── PERSIST (localStorage + Firebase) ──
 function save() {
   localStorage.setItem('sd_meetings', JSON.stringify(meetings));
@@ -946,7 +982,7 @@ async function runAI() {
   const MAX=80000;
   const inputText = text.length>MAX ? text.slice(0,MAX)+'\n...(이하 생략)' : text;
   const namesCtx = residentNames.length>0
-    ? `\n\n등록된 어르신 명단: ${residentNames.map(resName).join(', ')}\n음성인식 오류로 잘못된 이름은 위 명단으로 교정하고 corrected:true 표시.` : '';
+    ? `\n\n[필수] 등록된 어르신 명단(${residentNames.length}명): ${residentNames.map(resName).join(', ')}\n반드시 이 명단을 참조하여 음성인식 오류로 잘못 적힌 이름을 정확히 교정하고 corrected:true 로 표시하세요. 명단에 없는 이름은 original_name에 원문을 보존하고 resident는 가장 유사한 명단 이름으로 교정하세요.` : '';
 
   const sysPrompt = `당신은 노인요양원 케어 회의록을 분석하는 AI입니다. 반드시 아래 JSON 형식으로만 응답하세요. 마크다운 없이 순수 JSON만 출력하세요.
 
@@ -1018,11 +1054,25 @@ async function runAI() {
     const existIdx = meetings.findIndex(m=>m.date===dateVal);
     const prevStatus = existIdx>=0 ? meetings[existIdx].status||{} : {};
 
-    const newFeedbacks = parsed.feedbacks.map(f=>({
-      id:rand(), resident:f.resident, dept:f.dept||'nursing',
-      text:f.text, priority:f.priority||'normal',
-      corrected:!!f.corrected, originalName:f.original_name||f.resident
-    }));
+    // 클라이언트 측 이름 교정 (AI 결과 보완)
+    const newFeedbacks = parsed.feedbacks.map(f=>{
+      const originalRaw = f.original_name || f.resident || '';
+      const aiName = f.resident || '';
+      // matchResidentName으로 최종 교정
+      const matched = matchResidentName(aiName);
+      // AI가 이미 교정한 이름도 한번 더 검증
+      const finalName = matched.name;
+      const wasCorrected = !!f.corrected || matched.corrected;
+      // 원문 이름 보존: original_name이 있으면 그것, 없으면 AI가 준 이름
+      const origName = originalRaw !== aiName ? originalRaw : (wasCorrected ? originalRaw : finalName);
+      return {
+        id:rand(), resident:finalName, dept:f.dept||'nursing',
+        text:f.text, priority:f.priority||'normal',
+        corrected: wasCorrected,
+        originalName: origName,
+        noMatch: matched.noMatch || false
+      };
+    });
 
     if (existIdx>=0) {
       if (!confirm(`${dateVal} 회의록이 이미 있습니다. 덮어쓰시겠습니까?`)) {
@@ -1045,18 +1095,26 @@ async function runAI() {
     const high=newFeedbacks.filter(f=>f.priority==='high');
     const normal=newFeedbacks.filter(f=>f.priority!=='high');
     const residents=[...new Set(newFeedbacks.map(f=>f.resident))];
-    const corrected=newFeedbacks.filter(f=>f.corrected);
+    const corrected=newFeedbacks.filter(f=>f.corrected && f.resident!=='미정');
+    const unmatched=newFeedbacks.filter(f=>f.noMatch);
 
     const deptBadge=f=>{
       if(f.dept==='nursing') return `<span class="res-dept dept-n">간호</span>`;
       if(f.dept==='welfare') return `<span class="res-dept dept-w">복지</span>`;
       return `<span class="res-dept dept-b">간호+복지</span>`;
     };
+    const residentLabel=f=>{
+      if(f.resident==='미정')
+        return `<strong style="color:#b45309">⚠️ 미정</strong><span style="font-size:11px;color:var(--g500)"> (원문: ${esc(f.originalName||'')})</span>`;
+      if(f.corrected && f.originalName && f.originalName!==f.resident)
+        return `<strong>${esc(f.resident)}</strong><span style="font-size:11px;color:var(--g400)"> (교정: ${esc(f.originalName)})</span>`;
+      return `<strong>${esc(f.resident)}</strong>`;
+    };
 
     let html=`<div class="ai-result">`;
     html+=`<div class="res-head">✅ ${dateVal} 회의록 분석 완료</div>`;
 
-    // 회의 요약 (summary)
+    // 회의 요약
     if(parsed.summary){
       html+=`<div style="font-size:12px;color:var(--g600);margin-bottom:8px;padding:6px 8px;background:var(--g50);border-radius:6px;border-left:3px solid var(--primary)">${esc(parsed.summary)}</div>`;
     }
@@ -1066,9 +1124,7 @@ async function runAI() {
       html+=`<div class="res-section">`;
       html+=`<div class="res-section-title" style="color:#b91c1c">🚨 즉시 처리 필요 (${high.length}건)</div>`;
       high.forEach(f=>{
-        html+=`<div class="res-item urgent">${deptBadge(f)}<span>`;
-        html+=`<strong>${esc(f.resident)}</strong> — ${esc(f.text)}`;
-        html+=`</span></div>`;
+        html+=`<div class="res-item urgent">${deptBadge(f)}<span>${residentLabel(f)} — ${esc(f.text)}</span></div>`;
       });
       html+=`</div>`;
     }
@@ -1078,19 +1134,18 @@ async function runAI() {
       html+=`<div class="res-section">`;
       html+=`<div class="res-section-title">📋 일반 케어 (${normal.length}건)</div>`;
       normal.forEach(f=>{
-        html+=`<div class="res-item">${deptBadge(f)}<span>`;
-        html+=`<strong>${esc(f.resident)}</strong> — ${esc(f.text)}`;
-        html+=`</span></div>`;
+        html+=`<div class="res-item">${deptBadge(f)}<span>${residentLabel(f)} — ${esc(f.text)}</span></div>`;
       });
       html+=`</div>`;
     }
 
-    // 통계 + 이름교정
+    // 통계
     html+=`<div class="res-stats">`;
-    html+=`<span class="stat-chip">👥 ${residents.length}명</span>`;
+    html+=`<span class="stat-chip">👥 ${residents.filter(r=>r!=='미정').length}명</span>`;
     html+=`<span class="stat-chip">💉 간호 ${nurs}건</span>`;
     html+=`<span class="stat-chip">🤝 복지 ${welf}건</span>`;
     if(corrected.length) html+=`<span class="stat-chip">🔄 이름교정 ${corrected.length}건</span>`;
+    if(unmatched.length) html+=`<span class="stat-chip" style="background:#fef3c7;color:#92400e">⚠️ 미정 ${unmatched.length}건</span>`;
     html+=`</div>`;
     html+=`</div>`;
 
