@@ -126,6 +126,10 @@ textarea{width:100%;resize:vertical;line-height:1.65}
 .log-note-txt{color:var(--g600);width:100%;margin-top:1px;line-height:1.5}
 .fb-actions{display:flex;gap:4px;margin-left:auto;flex-shrink:0}
 
+/* 어르신별 팀 카드 좌측 컬러 */
+.fb-row.nursing-card{border-left:3px solid var(--nursing)}
+.fb-row.welfare-card{border-left:3px solid var(--welfare)}
+
 /* 팀 탭 */
 .team-res-card{background:#fff;border-radius:var(--r);box-shadow:var(--sh);margin-bottom:10px;overflow:hidden}
 .team-res-head{padding:11px 16px;background:var(--g50);display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
@@ -1531,10 +1535,10 @@ function renderFbRowHtml(m, f) {
     ? `<div class="fb-logs" style="display:none">${logItemsHtml}</div>`
     : '';
 
-  const histBtn = logs.length
-    ? `<button onclick="toggleFbLogs(this)" data-cnt="${logs.length}"
-        style="background:none;border:none;color:var(--g400);font-size:11px;cursor:pointer;padding:0;text-decoration:underline;white-space:nowrap">
-        📋 이력 ${logs.length}건</button>`
+  const histToggle = logs.length
+    ? `<div class="fb-hist-toggle" onclick="toggleFbLogs(this)" data-cnt="${logs.length}">
+        📋 처리이력 ${logs.length}건 보기 &nbsp;▼
+       </div>`
     : '';
 
   return `<div class="fb-row${fbDone?' fb-row-done':''}">
@@ -1543,27 +1547,28 @@ function renderFbRowHtml(m, f) {
         onchange="toggleFbDone('${m.id}','${f.id}',this.checked)" title="처리완료 체크">
       ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
       <span class="fb-text${fbDone?' fb-text-done':''}">${esc(f.text)}</span>
-      <div class="fb-actions" style="flex-direction:column;align-items:flex-end;gap:4px">
+      <div class="fb-actions">
         <button onclick="openAddLog('${m.id}','${f.id}')"
           style="background:none;border:1px solid var(--g300);color:var(--g600);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap"
           title="추가 처리 등록">➕ 추가처리</button>
-        ${histBtn}
       </div>
     </div>
     ${logsHtml}
+    ${histToggle}
   </div>`;
 }
-function toggleFbLogs(btn) {
-  // 버튼 바로 다음 형제인 fb-logs div 찾기
-  const row = btn.closest('.fb-row');
+function toggleFbLogs(footer) {
+  const row = footer.closest('.fb-row');
   if (!row) return;
   const el = row.querySelector('.fb-logs');
   if (!el) return;
   const isOpen = el.style.display !== 'none';
   el.style.display = isOpen ? 'none' : 'flex';
   el.style.flexDirection = 'column';
-  const cnt = btn.dataset.cnt || '';
-  btn.textContent = isOpen ? `📋 이력 ${cnt}건` : `🔼 이력 접기`;
+  const cnt = footer.dataset.cnt || '';
+  footer.innerHTML = isOpen
+    ? `📋 처리이력 ${cnt}건 보기 &nbsp;▼`
+    : `🔼 처리이력 ${cnt}건 접기 &nbsp;▲`;
 }
 
 function renderDeptBlock(m, resident, teamDept, fbs) {
@@ -2002,28 +2007,24 @@ function renderResview() {
       const welfFbs=fbs.filter(f=>f.dept==='welfare'||f.dept==='both');
       let inner='';
       if (nursFbs.length) {
-        inner+=`<div style="margin-bottom:6px">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
-            <span style="font-size:12px;font-weight:700;color:var(--nursing);background:var(--nursing-light);padding:2px 8px;border-radius:10px">💉 간호팀</span>
-          </div>
-          <div class="fb-list" style="border:1px solid var(--g100);border-radius:8px;overflow:hidden">
-            ${nursFbs.map(f=>renderFbRowHtml(meeting,f)).join('')}
-          </div>
-        </div>`;
+        inner+=nursFbs.map(f=>{
+          const row=renderFbRowHtml(meeting,f);
+          return row.replace('class="fb-row','class="fb-row nursing-card');
+        }).join('');
       }
       if (welfFbs.length) {
-        inner+=`<div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
-            <span style="font-size:12px;font-weight:700;color:var(--welfare);background:var(--welfare-light);padding:2px 8px;border-radius:10px">🤝 복지팀</span>
-          </div>
-          <div class="fb-list" style="border:1px solid var(--g100);border-radius:8px;overflow:hidden">
-            ${welfFbs.map(f=>renderFbRowHtml(meeting,f)).join('')}
-          </div>
-        </div>`;
+        inner+=welfFbs.map(f=>{
+          const row=renderFbRowHtml(meeting,f);
+          return row.replace('class="fb-row','class="fb-row welfare-card');
+        }).join('');
       }
-      return `<div class="team-date-row" style="align-items:flex-start">
-        <span class="team-date-tag" style="margin-top:3px">${meeting.date}</span>
-        <div style="flex:1">${inner}</div>
+      return `<div style="border-top:1px solid var(--g100);padding:10px 14px 6px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span class="team-date-tag">${meeting.date}</span>
+          ${nursFbs.length?'<span style="font-size:11px;font-weight:700;color:var(--nursing);background:var(--nursing-light);padding:2px 8px;border-radius:10px">💉 간호팀</span>':''}
+          ${welfFbs.length?'<span style="font-size:11px;font-weight:700;color:var(--welfare);background:var(--welfare-light);padding:2px 8px;border-radius:10px">🤝 복지팀</span>':''}
+        </div>
+        <div class="fb-list">${inner}</div>
       </div>`;
     }).join('');
 
