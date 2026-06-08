@@ -2320,8 +2320,10 @@ function addUser(){
   addUserToDB(newU).then(()=>showToast(nm+' 추가됨','ok')).catch(e=>showToast('로컬 저장됨 (DB 오류: '+e.message.slice(0,30)+')','err'));
 }
 async function addUserToDB(u){
-  return await sbFetch('/app_users','POST',{id:u.id,name:u.name,password:u.password,role:u.role||'user'},{
-    'Prefer':'resolution=merge-duplicates'
+  return await sbFetch('/app_users', {
+    method:'POST',
+    headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify({id:u.id,name:u.name,password:u.password,role:u.role||'user'})
   });
 }
 function delUser(id){
