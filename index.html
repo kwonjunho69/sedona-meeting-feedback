@@ -393,13 +393,16 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   <div id="resviewEmpty" class="empty"><div class="ei">👤</div><p>분석된 회의록이 없습니다.</p></div>
   <div id="resviewContent" style="display:none">
     <div class="sum-grid" id="resviewSumCards" style="display:none"></div>
-    <div class="fbar" style="flex-wrap:wrap;gap:6px">
+    <div class="fbar" style="flex-wrap:wrap;gap:8px">
       <span style="font-size:12px;font-weight:600;color:var(--g500)">처리상태:</span>
-      <button class="fbtn active" onclick="setResviewFilt('all',this)">전체</button>
-      <button class="fbtn p" onclick="setResviewFilt('pending',this)">⏳ 미처리</button>
-      <button class="fbtn d" onclick="setResviewFilt('done',this)">✅ 처리완료</button>
+      <select id="resviewFiltSel" onchange="setResviewFiltSel(this.value)"
+        style="font-size:12px;padding:5px 10px;border:1.5px solid var(--g300);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;font-weight:600">
+        <option value="all">전체</option>
+        <option value="pending">⏳ 미처리</option>
+        <option value="done">✅ 처리완료</option>
+      </select>
       <input type="text" id="resviewSearch" placeholder="🔍 이름 검색..." oninput="renderResview()"
-        style="margin-left:auto;width:120px;font-size:12px;padding:5px 10px">
+        style="margin-left:auto;width:130px;font-size:12px;padding:5px 10px">
     </div>
     <div class="floor-filter-bar" id="resviewFloorFilter">
       <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
@@ -1913,8 +1916,11 @@ function exportTeam(team) {
 
 function setResviewFilt(val, btn) {
   resviewFilt = val;
-  btn.closest('.fbar').querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
+  if(btn){btn.closest('.fbar').querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
+  renderResview();
+}
+function setResviewFiltSel(val) {
+  resviewFilt = val;
   renderResview();
 }
 function toggleResviewFloor(floor) {
