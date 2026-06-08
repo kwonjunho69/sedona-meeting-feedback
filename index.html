@@ -2174,6 +2174,12 @@ function appendBubble(role,text){
   d.innerHTML=`<div class="cavatar ${role}">${role==='ai'?'🤖':'👤'}</div><div class="cbubble ${role}"><pre>${esc(text)}</pre></div>`;
   c.appendChild(d);c.scrollTop=c.scrollHeight;return d;
 }
+function appendHtmlBubble(html){
+  const c=document.getElementById('chatWrap');
+  const d=document.createElement('div');d.className='cmsg ai';
+  d.innerHTML=`<div class="cavatar ai">🤖</div><div class="cbubble ai" style="max-width:100%">${html}</div>`;
+  c.appendChild(d);c.scrollTop=c.scrollHeight;return d;
+}
 function appendTyping(){
   const c=document.getElementById('chatWrap'),id='typ-'+Date.now();
   const d=document.createElement('div');d.className='cmsg ai';d.id=id;
