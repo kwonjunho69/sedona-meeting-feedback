@@ -105,17 +105,18 @@ textarea{width:100%;resize:vertical;line-height:1.65}
 
 /* 피드백 항목 */
 .fb-list{padding:0}
-.fb-row{padding:10px 14px;border-bottom:1px solid var(--g100);display:flex;flex-direction:column;gap:4px;font-size:13px;line-height:1.6;color:var(--g700)}
-.fb-row:last-child{border-bottom:none}
-.fb-row-done{background:#f0fdf4}
-.fb-row-top{display:flex;align-items:flex-start;gap:8px}
-.pri-badge{font-size:11px;padding:2px 7px;border-radius:6px;font-weight:700;background:var(--danger-light);color:var(--danger);flex-shrink:0;margin-top:2px}
-.fb-text{flex:1}
+/* 피드백 카드 */
+.fb-row{background:#fff;border:1px solid var(--g200);border-radius:10px;margin-bottom:8px;overflow:hidden;font-size:13px;line-height:1.6;color:var(--g700)}
+.fb-row:last-child{margin-bottom:0}
+.fb-row-done{background:#f8fffe;border-color:#bbf7d0}
+.fb-row-top{display:flex;align-items:center;gap:8px;padding:10px 12px}
+.pri-badge{font-size:11px;padding:2px 7px;border-radius:6px;font-weight:700;background:var(--danger-light);color:var(--danger);flex-shrink:0}
+.fb-text{flex:1;font-size:14px;line-height:1.5}
 .fb-text-done{color:var(--g400);font-size:15px;font-weight:600}
-.fb-check{cursor:pointer;width:16px;height:16px;flex-shrink:0;margin-top:3px;accent-color:var(--success)}
-/* 처리이력 */
-.fb-logs{margin:4px 0 2px 24px;display:flex;flex-direction:column;gap:3px}
-.fb-log-entry{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 10px;background:#f8fafc;border-radius:6px;border-left:3px solid var(--g300);font-size:12px}
+.fb-check{cursor:pointer;width:16px;height:16px;flex-shrink:0;accent-color:var(--success)}
+/* 처리이력 — 풀 와이드 */
+.fb-logs{background:#f8fafc;border-top:1px solid var(--g100);padding:8px 12px;display:flex;flex-direction:column;gap:4px}
+.fb-log-entry{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 10px;background:#fff;border-radius:6px;border-left:3px solid var(--g300);font-size:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
 .fb-log-entry.log-done-entry{border-left-color:var(--success);background:#f0fdf4}
 .fb-log-entry.log-add-entry{border-left-color:#60a5fa;background:#eff6ff}
 .log-badge{font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;flex-shrink:0}
@@ -123,8 +124,12 @@ textarea{width:100%;resize:vertical;line-height:1.65}
 .log-badge-add{background:#dbeafe;color:#1e40af}
 .log-who{font-weight:700;color:var(--g700)}
 .log-at{color:var(--g400);font-size:11px}
-.log-note-txt{color:var(--g600);width:100%;margin-top:1px;line-height:1.5}
-.fb-actions{display:flex;gap:4px;margin-left:auto;flex-shrink:0}
+.log-note-txt{color:var(--g600);width:100%;margin-top:2px;line-height:1.5;padding-left:4px;border-left:2px solid var(--g200)}
+/* 액션 버튼 */
+.fb-actions{display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:auto}
+.fb-icon-btn{background:none;border:1px solid var(--g300);color:var(--g500);border-radius:6px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;font-weight:700;flex-shrink:0;transition:.15s;padding:0}
+.fb-icon-btn:hover{background:var(--primary-light);color:var(--primary);border-color:var(--primary)}
+.fb-icon-btn.hist-open{background:var(--primary-light);color:var(--primary);border-color:var(--primary)}
 
 /* 어르신별 팀 카드 좌측 컬러 */
 .fb-row.nursing-card{border-left:3px solid var(--nursing)}
@@ -1535,10 +1540,8 @@ function renderFbRowHtml(m, f) {
     ? `<div class="fb-logs" style="display:none">${logItemsHtml}</div>`
     : '';
 
-  const histToggle = logs.length
-    ? `<div class="fb-hist-toggle" onclick="toggleFbLogs(this)" data-cnt="${logs.length}">
-        📋 처리이력 ${logs.length}건 보기 &nbsp;▼
-       </div>`
+  const histBtn = logs.length
+    ? `<button class="fb-icon-btn" onclick="toggleFbLogs(this)" data-cnt="${logs.length}" title="처리이력 보기">▼</button>`
     : '';
 
   return `<div class="fb-row${fbDone?' fb-row-done':''}">
@@ -1548,27 +1551,23 @@ function renderFbRowHtml(m, f) {
       ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
       <span class="fb-text${fbDone?' fb-text-done':''}">${esc(f.text)}</span>
       <div class="fb-actions">
-        <button onclick="openAddLog('${m.id}','${f.id}')"
-          style="background:none;border:1px solid var(--g300);color:var(--g600);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap"
-          title="추가 처리 등록">➕ 추가처리</button>
+        <button class="fb-icon-btn" onclick="openAddLog('${m.id}','${f.id}')" title="추가처리 등록">＋</button>
+        ${histBtn}
       </div>
     </div>
     ${logsHtml}
-    ${histToggle}
   </div>`;
 }
-function toggleFbLogs(footer) {
-  const row = footer.closest('.fb-row');
+function toggleFbLogs(btn) {
+  const row = btn.closest('.fb-row');
   if (!row) return;
   const el = row.querySelector('.fb-logs');
   if (!el) return;
   const isOpen = el.style.display !== 'none';
   el.style.display = isOpen ? 'none' : 'flex';
   el.style.flexDirection = 'column';
-  const cnt = footer.dataset.cnt || '';
-  footer.innerHTML = isOpen
-    ? `📋 처리이력 ${cnt}건 보기 &nbsp;▼`
-    : `🔼 처리이력 ${cnt}건 접기 &nbsp;▲`;
+  btn.textContent = isOpen ? '▼' : '▲';
+  btn.classList.toggle('hist-open', !isOpen);
 }
 
 function renderDeptBlock(m, resident, teamDept, fbs) {
