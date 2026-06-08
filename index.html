@@ -1516,7 +1516,10 @@ function deleteFbLog(meetingId, feedbackId, logIdx) {
 function renderFbRowHtml(m, f) {
   const fbDone = getFbDone(m, f.id);
   const logs = getFbStatus(m, f.id).logs || [];
-  const logsHtml = logs.length ? `<div class="fb-logs">${logs.map((lg, idx) => `
+  const logId = 'log-'+m.id+'-'+f.id;
+
+  // 이력 항목 HTML
+  const logItemsHtml = logs.map((lg, idx) => `
     <div class="fb-log-entry ${lg.type==='done'?'log-done-entry':'log-add-entry'}">
       <span class="log-badge ${lg.type==='done'?'log-badge-done':'log-badge-add'}">${lg.type==='done'?'처리완료':'추가처리'}</span>
       <span class="log-who">${esc(lg.user||'')}</span>
@@ -1524,7 +1527,17 @@ function renderFbRowHtml(m, f) {
       <button onclick="deleteFbLog('${m.id}','${f.id}',${idx})"
         style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--g400);font-size:13px;padding:0 4px;flex-shrink:0" title="삭제">🗑️</button>
       ${lg.note?`<div class="log-note-txt">${esc(lg.note)}</div>`:''}
-    </div>`).join('')}</div>` : '';
+    </div>`).join('');
+
+  // 처리완료 시: 기본 접힘, 상세보기 버튼으로 펼침
+  const logsHtml = logs.length ? `
+    <div class="fb-logs-wrap">
+      <button onclick="toggleFbLogs('${logId}')"
+        style="margin-left:24px;background:none;border:none;color:var(--g400);font-size:11px;cursor:pointer;padding:1px 0;text-decoration:underline"
+        id="btn-${logId}">📋 처리이력 ${logs.length}건 보기</button>
+      <div class="fb-logs" id="${logId}" style="display:none">${logItemsHtml}</div>
+    </div>` : '';
+
   return `<div class="fb-row${fbDone?' fb-row-done':''}">
     <div class="fb-row-top">
       <input type="checkbox" class="fb-check" data-fid="${f.id}" ${fbDone?'checked':''}
@@ -1539,6 +1552,16 @@ function renderFbRowHtml(m, f) {
     </div>
     ${logsHtml}
   </div>`;
+}
+function toggleFbLogs(logId) {
+  const el = document.getElementById(logId);
+  const btn = document.getElementById('btn-'+logId);
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'flex';
+  el.style.flexDirection = 'column';
+  const cnt = el.children.length;
+  btn.textContent = open ? `📋 처리이력 ${cnt}건 보기` : `🔼 이력 접기`;
 }
 
 function renderDeptBlock(m, resident, teamDept, fbs) {
@@ -2196,14 +2219,16 @@ function rand(){return Math.random().toString(36).slice(2);}
 function doLogin(){
   var id=document.getElementById('loginId').value.trim();
   var pw=document.getElementById('loginPw').value;
+  // users 배열에서 먼저 찾기 (실제 이름 우선)
+  var u=users.find(function(x){return x.id===id&&x.password===pw;});
+  if(u){loginSuccess(u);return;}
+  // admin 기본 계정 폴백
   if(id==='admin'&&pw==='1234'){
     var a={id:'admin',name:'관리자',role:'admin',password:'1234'};
-    if(!users.find(function(u){return u.id==='admin';}))users.unshift(a);
+    users.unshift(a);
     loginSuccess(a);return;
   }
-  var u=users.find(function(x){return x.id===id&&x.password===pw;});
-  if(!u){document.getElementById('loginErr').style.display='block';return;}
-  loginSuccess(u);
+  document.getElementById('loginErr').style.display='block';
 }
 function loginSuccess(u){
   currentUser=u;
