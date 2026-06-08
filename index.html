@@ -30,9 +30,9 @@ header p{font-size:12px;opacity:.8;margin-top:1px}
 .api-dot.ok{background:#4ade80}
 
 .nav{background:#fff;border-bottom:2px solid var(--g200);display:flex;padding:0 20px;overflow-x:auto}
-.ntab{padding:11px 18px;cursor:pointer;font-size:14px;font-weight:600;color:var(--g500);border-bottom:3px solid transparent;white-space:nowrap;transition:.2s;margin-bottom:-2px}
-.ntab:hover{color:var(--primary)}
-.ntab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.ntab{padding:10px 18px;cursor:pointer;font-size:14px;font-weight:600;color:var(--g500);border-bottom:none;white-space:nowrap;transition:.2s;border-radius:8px 8px 0 0}
+.ntab:hover{color:var(--primary);background:var(--primary-light)}
+.ntab.active{color:#fff;background:var(--primary)}
 .nbadge{display:inline-block;background:var(--danger);color:#fff;border-radius:10px;font-size:11px;padding:1px 6px;margin-left:5px}
 
 .main{max-width:1100px;margin:0 auto;padding:20px}
@@ -313,7 +313,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 <div class="tc" id="tab-dates">
   <div id="datesEmpty" class="empty"><div class="ei">📅</div><p>분석된 회의록이 없습니다.</p></div>
   <div id="datesContent" style="display:none">
-    <div class="sum-grid" id="dateSumCards"></div>
+    <div class="sum-grid" id="dateSumCards" style="display:none"></div>
     <div id="meetingList"></div>
   </div>
 </div>
@@ -322,7 +322,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 <div class="tc" id="tab-nursing">
   <div id="nursingEmpty" class="empty"><div class="ei">💉</div><p>간호팀 피드백이 없습니다.</p></div>
   <div id="nursingContent" style="display:none">
-    <div class="sum-grid" id="nursingSumCards"></div>
+    <div class="sum-grid" id="nursingSumCards" style="display:none"></div>
     <div class="panel" style="padding:10px 14px">
       <div class="prog-wrap"><div class="prog-fill" id="nursingProg" style="width:0%"></div></div>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--g500);margin-top:4px">
@@ -353,7 +353,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 <div class="tc" id="tab-welfare">
   <div id="welfareEmpty" class="empty"><div class="ei">🤝</div><p>복지팀 피드백이 없습니다.</p></div>
   <div id="welfareContent" style="display:none">
-    <div class="sum-grid" id="welfareSumCards"></div>
+    <div class="sum-grid" id="welfareSumCards" style="display:none"></div>
     <div class="panel" style="padding:10px 14px">
       <div class="prog-wrap"><div class="prog-fill" id="welfareProg" style="width:0%"></div></div>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--g500);margin-top:4px">
@@ -384,14 +384,17 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 <div class="tc" id="tab-resview">
   <div id="resviewEmpty" class="empty"><div class="ei">👤</div><p>분석된 회의록이 없습니다.</p></div>
   <div id="resviewContent" style="display:none">
-    <div class="sum-grid" id="resviewSumCards"></div>
-    <div class="fbar">
-      <span style="font-size:12px;font-weight:600;color:var(--g500)">필터:</span>
+    <div class="sum-grid" id="resviewSumCards" style="display:none"></div>
+    <div class="fbar" style="flex-wrap:wrap;gap:6px">
+      <span style="font-size:12px;font-weight:600;color:var(--g500)">처리상태:</span>
       <button class="fbtn active" onclick="setResviewFilt('all',this)">전체</button>
-      <button class="fbtn p" onclick="setResviewFilt('pending',this)">⏳ 미처리 있는 어르신</button>
-      <button class="fbtn d" onclick="setResviewFilt('done',this)">✅ 전체 처리완료</button>
-      <input type="text" id="resviewSearch" placeholder="어르신 이름 검색..." oninput="renderResview()"
-        style="margin-left:auto;width:140px;font-size:12px;padding:5px 10px">
+      <button class="fbtn p" onclick="setResviewFilt('pending',this)">⏳ 미처리</button>
+      <button class="fbtn d" onclick="setResviewFilt('done',this)">✅ 처리완료</button>
+      <input type="text" id="resviewSearch" placeholder="🔍 이름 검색..." oninput="renderResview()"
+        style="margin-left:auto;width:120px;font-size:12px;padding:5px 10px">
+    </div>
+    <div class="floor-filter-bar" id="resviewFloorFilter">
+      <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
     </div>
     <div id="resviewList"></div>
   </div>
@@ -541,6 +544,48 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   </div>
 </div>
 
+<!-- ══ 수동 피드백 추가 모달 ══ -->
+<div class="modal-ov" id="addFbModal">
+  <div class="modal" style="max-width:440px">
+    <h2>➕ 어르신 피드백 추가</h2>
+    <div style="font-size:12px;color:var(--g500);margin-bottom:14px" id="addFbMeetingDate"></div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:4px">어르신 <span style="color:var(--danger)">*</span></div>
+        <input type="text" id="addFbResident" list="addFbResidentList" placeholder="이름 입력 또는 선택"
+          style="width:100%;box-sizing:border-box" autocomplete="off">
+        <datalist id="addFbResidentList"></datalist>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:12px;font-weight:600;margin-bottom:4px">담당팀 <span style="color:var(--danger)">*</span></div>
+          <select id="addFbDept" style="width:100%;box-sizing:border-box">
+            <option value="nursing">💉 간호팀</option>
+            <option value="welfare">🤝 복지팀</option>
+            <option value="both">💉🤝 공통</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;margin-bottom:4px">우선순위</div>
+          <select id="addFbPriority" style="width:100%;box-sizing:border-box">
+            <option value="normal">일반</option>
+            <option value="high">⚠️ 즉시처리</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:4px">내용 <span style="color:var(--danger)">*</span></div>
+        <textarea id="addFbText" style="min-height:90px;width:100%;box-sizing:border-box"
+          placeholder="피드백 내용을 입력하세요..."></textarea>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn btn-primary btn-sm" onclick="confirmAddFb()">➕ 추가</button>
+      <button class="btn btn-outline btn-sm" onclick="closeAddFbModal()">취소</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ 피드백 편집 모달 ══ -->
 <div class="modal-ov" id="fbEditModal">
   <div class="modal" style="max-width:500px">
@@ -617,6 +662,7 @@ let currentTab = 'input'; // 현재 활성 탭 추적
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
 let floorFilt = { nursing: new Set(['all']), welfare: new Set(['all']) };
 let resviewFilt = 'all';
+let resviewFloorFilt = new Set(['all']);
 let pendingNote = null; // { meetingId, feedbackId, type: 'done'|'add' }
 
 // ── 어르신 명단 헬퍼 ──
@@ -1363,7 +1409,11 @@ function renderDates() {
           <span class="stat-chip d">${mDone}완료</span>
           ${mPend>0?`<span class="stat-chip p">${mPend}미처리</span>`:''}
         </div>
-        <button class="btn btn-outline btn-sm" style="margin-left:8px" onclick="event.stopPropagation();deleteMeeting('${m.id}')">🗑</button>
+        <button onclick="event.stopPropagation();openAddFbModal('${m.id}')"
+          style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:8px">
+          ➕ 피드백 추가
+        </button>
+        <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="event.stopPropagation();deleteMeeting('${m.id}')">🗑</button>
       </div>
       <div class="meeting-body ${openMeetingIds.has(m.id)?'open':''}" id="mb-${m.id}">
         <div class="meeting-summary">${esc(m.summary)}
@@ -1371,6 +1421,7 @@ function renderDates() {
         </div>
         ${m.keyIssues?.length?`<div class="key-issues">${m.keyIssues.map(k=>`<span class="ki-chip">${esc(k)}</span>`).join('')}</div>`:''}
         ${renderMeetingResidents(m)}
+
       </div>
     </div>`;
   }).join('');
@@ -1465,6 +1516,7 @@ function deleteFbLog(meetingId, feedbackId, logIdx) {
 function renderFbRowHtml(m, f) {
   const fbDone = getFbDone(m, f.id);
   const logs = getFbStatus(m, f.id).logs || [];
+
   const logItemsHtml = logs.map((lg, idx) => `
     <div class="fb-log-entry ${lg.type==='done'?'log-done-entry':'log-add-entry'}">
       <span class="log-badge ${lg.type==='done'?'log-badge-done':'log-badge-add'}">${lg.type==='done'?'처리완료':'추가처리'}</span>
@@ -1474,14 +1526,17 @@ function renderFbRowHtml(m, f) {
         style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--g400);font-size:13px;padding:0 4px;flex-shrink:0" title="삭제">🗑️</button>
       ${lg.note?`<div class="log-note-txt">${esc(lg.note)}</div>`:''}
     </div>`).join('');
+
   const logsHtml = logs.length
     ? `<div class="fb-logs" style="display:none">${logItemsHtml}</div>`
     : '';
+
   const histBtn = logs.length
     ? `<button onclick="toggleFbLogs(this)" data-cnt="${logs.length}"
         style="background:none;border:none;color:var(--g400);font-size:11px;cursor:pointer;padding:0;text-decoration:underline;white-space:nowrap">
         📋 이력 ${logs.length}건</button>`
     : '';
+
   return `<div class="fb-row${fbDone?' fb-row-done':''}">
     <div class="fb-row-top">
       <input type="checkbox" class="fb-check" data-fid="${f.id}" ${fbDone?'checked':''}
@@ -1499,6 +1554,7 @@ function renderFbRowHtml(m, f) {
   </div>`;
 }
 function toggleFbLogs(btn) {
+  // 버튼 바로 다음 형제인 fb-logs div 찾기
   const row = btn.closest('.fb-row');
   if (!row) return;
   const el = row.querySelector('.fb-logs');
@@ -1559,14 +1615,23 @@ function toggleMeeting(id) {
   else openMeetingIds.delete(id);
 }
 
-function deleteMeeting(id) {
+async function deleteMeeting(id) {
   const m=meetings.find(x=>x.id===id);
   if (!m||!confirm(m.date+' 회의록을 삭제하시겠습니까?')) return;
   meetings=meetings.filter(x=>x.id!==id);
-  // Supabase에서 삭제 (feedbacks/status 는 CASCADE)
-  sbFetch('/meetings?id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}}).catch(console.error);
   localStorage.setItem('sd_meetings', JSON.stringify(meetings));
-  renderDates(); updateAllBadges(); showToast('삭제됨');
+  renderDates(); updateAllBadges(); showToast('삭제 중...', '');
+  try {
+    // 자식 테이블 먼저 삭제 (FK 제약)
+    await sbFetch('/feedback_processing?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    await sbFetch('/processing_status?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    await sbFetch('/feedbacks?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    await sbFetch('/meetings?id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    showToast('삭제 완료', 'ok');
+  } catch(e) {
+    console.error('deleteMeeting DB error:', e);
+    showToast('로컬 삭제됨 (DB 오류: '+e.message.slice(0,40)+')', 'err');
+  }
 }
 
 // ══════════════════════════
@@ -1845,6 +1910,33 @@ function setResviewFilt(val, btn) {
   btn.classList.add('active');
   renderResview();
 }
+function toggleResviewFloor(floor) {
+  const fset = resviewFloorFilt;
+  if (floor==='all') { fset.clear(); fset.add('all'); }
+  else { fset.delete('all'); if(fset.has(floor)) fset.delete(floor); else fset.add(floor); if(fset.size===0) fset.add('all'); }
+  renderResview();
+}
+function renderResviewFloorCheckboxes(floors) {
+  const bar = document.getElementById('resviewFloorFilter');
+  if (!bar) return;
+  const fset = resviewFloorFilt;
+  const allChecked = fset.has('all');
+  while (bar.children.length > 1) bar.removeChild(bar.lastChild);
+  const makeLabel = (fl, label, checked) => {
+    const lbl = document.createElement('label');
+    lbl.className = checked ? 'checked' : '';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = checked;
+    cb.addEventListener('change', () => toggleResviewFloor(fl));
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(' ' + label));
+    bar.appendChild(lbl);
+  };
+  makeLabel('all', '전체', allChecked);
+  floors.sort((a,b) => a==='?'?1:b==='?'?-1:a.localeCompare(b,undefined,{numeric:true})).forEach(fl => {
+    makeLabel(fl, fl==='?' ? '미지정' : fl+'층', !allChecked && fset.has(fl));
+  });
+}
 
 function renderResview() {
   const resMap = {};
@@ -1884,9 +1976,14 @@ function renderResview() {
     <div class="sum-card d"><div class="num" style="color:var(--success)">${fullDoneRes}</div><div class="lbl">✅ 전체 처리완료</div></div>
     <div class="sum-card t"><div class="num">${doneGroups}/${totalGroups}</div><div class="lbl">처리건 / 전체</div></div>`;
 
+  // 층 체크박스 필터 동적 생성
+  const allFloors = [...new Set(allRes.map(res => getResidentFloor(res)))];
+  renderResviewFloorCheckboxes(allFloors);
+
   const search=(document.getElementById('resviewSearch').value||'').trim();
   let filtered=resStats;
   if (search) filtered=filtered.filter(s=>s.res.includes(search));
+  if (!resviewFloorFilt.has('all')) filtered=filtered.filter(s=>resviewFloorFilt.has(getResidentFloor(s.res)));
   if (resviewFilt==='pending') filtered=filtered.filter(s=>s.pendGroups>0);
   else if (resviewFilt==='done') filtered=filtered.filter(s=>s.pendGroups===0);
 
@@ -2102,6 +2199,12 @@ function appendBubble(role,text){
   d.innerHTML=`<div class="cavatar ${role}">${role==='ai'?'🤖':'👤'}</div><div class="cbubble ${role}"><pre>${esc(text)}</pre></div>`;
   c.appendChild(d);c.scrollTop=c.scrollHeight;return d;
 }
+function appendHtmlBubble(html){
+  const c=document.getElementById('chatWrap');
+  const d=document.createElement('div');d.className='cmsg ai';
+  d.innerHTML=`<div class="cavatar ai">🤖</div><div class="cbubble ai" style="max-width:100%">${html}</div>`;
+  c.appendChild(d);c.scrollTop=c.scrollHeight;return d;
+}
 function appendTyping(){
   const c=document.getElementById('chatWrap'),id='typ-'+Date.now();
   const d=document.createElement('div');d.className='cmsg ai';d.id=id;
@@ -2118,14 +2221,16 @@ function rand(){return Math.random().toString(36).slice(2);}
 function doLogin(){
   var id=document.getElementById('loginId').value.trim();
   var pw=document.getElementById('loginPw').value;
+  // users 배열에서 먼저 찾기 (실제 이름 우선)
+  var u=users.find(function(x){return x.id===id&&x.password===pw;});
+  if(u){loginSuccess(u);return;}
+  // admin 기본 계정 폴백
   if(id==='admin'&&pw==='1234'){
     var a={id:'admin',name:'관리자',role:'admin',password:'1234'};
-    if(!users.find(function(u){return u.id==='admin';}))users.unshift(a);
+    users.unshift(a);
     loginSuccess(a);return;
   }
-  var u=users.find(function(x){return x.id===id&&x.password===pw;});
-  if(!u){document.getElementById('loginErr').style.display='block';return;}
-  loginSuccess(u);
+  document.getElementById('loginErr').style.display='block';
 }
 function loginSuccess(u){
   currentUser=u;
@@ -2243,6 +2348,80 @@ function promptChangeName(userId, currentName){
 }
 
 // ══════════════════════════
+// 수동 피드백 추가
+// ══════════════════════════
+let addFbTargetMeetingId = null;
+
+function openAddFbModal(meetingId) {
+  if (!currentUser) { showToast('로그인 후 이용하세요', 'err'); return; }
+  const m = meetings.find(x => x.id === meetingId);
+  if (!m) return;
+  addFbTargetMeetingId = meetingId;
+
+  // 어르신 목록 갱신
+  const dl = document.getElementById('addFbResidentList');
+  if (dl) dl.innerHTML = residentNames.map(r => `<option value="${resName(r)}">`).join('');
+
+  document.getElementById('addFbMeetingDate').textContent = '📅 ' + m.date + ' 회의록';
+  document.getElementById('addFbResident').value = '';
+  document.getElementById('addFbDept').value = 'nursing';
+  document.getElementById('addFbPriority').value = 'normal';
+  document.getElementById('addFbText').value = '';
+  document.getElementById('addFbModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('addFbResident').focus(), 100);
+}
+
+function closeAddFbModal() {
+  document.getElementById('addFbModal').style.display = 'none';
+  addFbTargetMeetingId = null;
+}
+
+async function confirmAddFb() {
+  const resident = document.getElementById('addFbResident').value.trim();
+  const dept = document.getElementById('addFbDept').value;
+  const priority = document.getElementById('addFbPriority').value;
+  const text = document.getElementById('addFbText').value.trim();
+
+  if (!resident) { showToast('어르신 이름을 입력하세요', 'err'); return; }
+  if (!text) { showToast('내용을 입력하세요', 'err'); return; }
+
+  const m = meetings.find(x => x.id === addFbTargetMeetingId);
+  if (!m) return;
+
+  const newFb = {
+    id: rand(),
+    resident,
+    dept,
+    priority,
+    text,
+    manual: true   // 수동 추가 표시
+  };
+
+  m.feedbacks.push(newFb);
+  closeAddFbModal();
+  save();
+  renderAll();
+  showToast(resident + ' 어르신 피드백 추가됨', 'ok');
+
+  // DB에 저장
+  try {
+    await sbFetch('/feedbacks', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([{
+        id: newFb.id,
+        meeting_id: m.id,
+        resident: newFb.resident,
+        dept: newFb.dept,
+        priority: newFb.priority,
+        text: newFb.text,
+        original_name: newFb.resident
+      }])
+    });
+  } catch(e) { console.warn('feedback DB save failed', e); }
+}
+
+// ══════════════════════════
 // 피드백 편집
 // ══════════════════════════
 let editTarget = null;
@@ -2295,15 +2474,27 @@ function saveFeedbackEdit(){
   showToast('피드백 수정됨','ok');
 }
 
-function deleteFeedback(){
+async function deleteFeedback(){
   if(!editTarget) return;
   if(!confirm('이 피드백 항목을 삭제하시겠습니까?')) return;
   const m = meetings.find(x=>x.id===editTarget.meetingId);
   if(!m) return;
-  m.feedbacks = m.feedbacks.filter(x=>x.id!==editTarget.feedbackId);
+  const fid = editTarget.feedbackId;
+  m.feedbacks = m.feedbacks.filter(x=>x.id!==fid);
+  // feedbackStatus에서도 제거
+  if(m.feedbackStatus) delete m.feedbackStatus[fid];
   closeFbEditModal();
-  save(); renderCurrentTab();
-  showToast('삭제됨');
+  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  renderCurrentTab(); updateAllBadges();
+  showToast('삭제 중...');
+  try {
+    await sbFetch('/feedback_processing?feedback_id=eq.'+fid, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    await sbFetch('/feedbacks?id=eq.'+fid, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    showToast('삭제 완료', 'ok');
+  } catch(e) {
+    console.error('deleteFeedback DB error:', e);
+    showToast('로컬 삭제됨 (DB 오류: '+e.message.slice(0,40)+')', 'err');
+  }
 }
 
 function closeFbEditModal(){
@@ -2374,4 +2565,31 @@ window.onload = async () => {
     try{
       const su = JSON.parse(savedSession);
       const u = su.id==='admin'
-        ? {id:'admin',name:'관리자',r
+        ? {id:'admin',name:'관리자',role:'admin',password:'1234'}
+        : users.find(x=>x.id===su.id);
+      if(u){ loginSuccess(u); }
+      else { sessionStorage.removeItem('sd_user'); document.getElementById('loginOverlay').style.display='flex'; }
+    }catch(e){
+      document.getElementById('loginOverlay').style.display='flex';
+    }
+  } else {
+    document.getElementById('loginOverlay').style.display='flex';
+  }
+
+  setInterval(async()=>{ await saveToDB(); updateSyncLabel(); }, 60000);
+  setInterval(updateSyncLabel, 10000);
+
+  document.addEventListener('visibilitychange', async()=>{
+    if(document.visibilityState==='visible'){
+      const ok=await loadFromDB();
+      if(ok){renderAll();renderNames();}
+    }
+  });
+
+  window.addEventListener('focus', async()=>{
+    { const ok=await loadFromDB(); if(ok){renderAll();renderNames();} }
+  });
+};
+</script>
+</body>
+</html>
