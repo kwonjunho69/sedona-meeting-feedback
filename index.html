@@ -227,9 +227,9 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 
 /* 층 체크박스 필터 */
 .floor-filter-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;padding:10px 14px;background:var(--g50);border-radius:var(--r);border:1px solid var(--g200)}
-.floor-filter-bar label{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;cursor:pointer;padding:4px 10px;border-radius:20px;border:1.5px solid var(--g300);background:#fff;color:var(--g600);transition:.15s;user-select:none}
+.floor-filter-bar label{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;cursor:pointer;padding:3px 8px;border-radius:20px;border:1.5px solid var(--g300);background:#fff;color:var(--g600);transition:.15s;user-select:none}
 .floor-filter-bar label:hover{border-color:var(--primary);color:var(--primary)}
-.floor-filter-bar input[type=checkbox]{accent-color:var(--primary);width:15px;height:15px;cursor:pointer}
+.floor-filter-bar input[type=checkbox]{accent-color:var(--primary);width:13px;height:13px;cursor:pointer}
 .floor-filter-bar label.checked{background:var(--primary);border-color:var(--primary);color:#fff}
 .floor-filter-bar label.checked input[type=checkbox]{accent-color:#fff}
 
@@ -1491,7 +1491,7 @@ function renderMeetingResidents(m) {
       return `<div class="res-group" style="${hasHigh ? 'border-left:3px solid #dc2626' : ''}">
         <div class="res-group-header">
           <span style="font-size:16px">${isUnmatched ? '❓' : '👤'}</span>
-          <span class="res-group-name" style="${isUnmatched ? 'color:#b45309' : ''}">${esc(res)} 어르신</span>
+          <span class="res-group-name" style="${isUnmatched ? 'color:#b45309' : ''}">${esc(res)}</span>
           ${rm ? `<span style="font-size:11px;background:var(--g200);color:var(--g600);padding:1px 7px;border-radius:10px;font-weight:600">${rm}호</span>` : ''}
           ${hasHigh ? `<span style="font-size:11px;background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:10px;font-weight:700">🚨 즉시처리</span>` : ''}
           ${corrected ? `<span class="corrected-badge">🔄 교정</span>` : ''}
@@ -1897,7 +1897,7 @@ function exportTeam(team) {
   const byRes={};
   rows.forEach(r=>{ (byRes[r.resident]=byRes[r.resident]||[]).push(r); });
   Object.entries(byRes).forEach(([res,list])=>{
-    txt+=`▸ ${res} 어르신\n`;
+    txt+=`▸ ${res}\n`;
     list.forEach(r=>{
       txt+=`  [${r.date}]\n`;
       r.fbs.forEach(f=>{txt+=`    ${f.priority==='high'?'⚠️ ':''}□ ${f.text}\n`;});
@@ -2039,7 +2039,7 @@ function renderResview() {
     return `<div class="team-res-card">
       <div class="team-res-head" onclick="toggleTeamRes('${bodyId}')">
         <span style="font-size:18px">👤</span>
-        <span class="team-res-name">${esc(res)} 어르신</span>
+        <span class="team-res-name">${esc(res)}</span>
         ${(()=>{const rm=getResidentRoom(res);return rm?`<span class="room-badge">${rm}호</span>`:''})()}
         ${allCorrected?`<span class="corrected-badge">🔄 이름교정</span>`:''}
         <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
