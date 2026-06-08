@@ -1527,16 +1527,16 @@ function renderFbRowHtml(m, f) {
       ${lg.note?`<div class="log-note-txt">${esc(lg.note)}</div>`:''}
     </div>`).join('');
 
-  // 이력 버튼은 fb-actions 안에 추가처리 옆에 배치
-  const histBtn = logs.length
-    ? `<button onclick="toggleFbLogs(this)"
-        data-cnt="${logs.length}"
-        style="background:none;border:1px solid var(--g300);color:var(--g500);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;white-space:nowrap">
-        📋 이력 ${logs.length}건</button>`
-    : '';
-
   const logsHtml = logs.length
     ? `<div class="fb-logs" style="display:none">${logItemsHtml}</div>`
+    : '';
+
+  const histBtn = logs.length
+    ? `<div style="margin-left:24px;margin-top:2px">
+        <button onclick="toggleFbLogs(this)" data-cnt="${logs.length}"
+          style="background:none;border:none;color:var(--g400);font-size:11px;cursor:pointer;padding:0;text-decoration:underline">
+          📋 처리이력 ${logs.length}건 보기</button>
+       </div>`
     : '';
 
   return `<div class="fb-row${fbDone?' fb-row-done':''}">
@@ -1546,12 +1546,12 @@ function renderFbRowHtml(m, f) {
       ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
       <span class="fb-text${fbDone?' fb-text-done':''}">${esc(f.text)}</span>
       <div class="fb-actions">
-        ${histBtn}
         <button onclick="openAddLog('${m.id}','${f.id}')"
           style="background:none;border:1px solid var(--g300);color:var(--g600);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap"
           title="추가 처리 등록">➕ 추가처리</button>
       </div>
     </div>
+    ${histBtn}
     ${logsHtml}
   </div>`;
 }
