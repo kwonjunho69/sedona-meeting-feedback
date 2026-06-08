@@ -2230,8 +2230,9 @@ function doLogin(){
   if(u){loginSuccess(u);return;}
   // admin 기본 계정 폴백
   if(id==='admin'&&pw==='1234'){
-    var a={id:'admin',name:'관리자',role:'admin',password:'1234'};
-    users.unshift(a);
+    var existing=users.find(function(x){return x.id==='admin';});
+    var a=existing||{id:'admin',name:'관리자',role:'admin',password:'1234'};
+    if(!existing)users.unshift(a);
     loginSuccess(a);return;
   }
   document.getElementById('loginErr').style.display='block';
@@ -2569,7 +2570,7 @@ window.onload = async () => {
     try{
       const su = JSON.parse(savedSession);
       const u = su.id==='admin'
-        ? {id:'admin',name:'관리자',role:'admin',password:'1234'}
+        ? (users.find(x=>x.id==='admin') || {id:'admin',name:su.name||'관리자',role:'admin',password:'1234'})
         : users.find(x=>x.id===su.id);
       if(u){ loginSuccess(u); }
       else { sessionStorage.removeItem('sd_user'); document.getElementById('loginOverlay').style.display='flex'; }
