@@ -2309,24 +2309,31 @@ function addUser(){
   var pw=document.getElementById('newUserPw').value;
   if(!id||!nm||!pw){showToast('아이디, 이름, 비밀번호를 모두 입력하세요','err');return;}
   if(users.find(function(u){return u.id===id;})){showToast('이미 있는 아이디입니다','err');return;}
-  users.push({id:id,name:nm,password:pw,role:'user'});
-  save();renderUserList();
+  const newU={id:id,name:nm,password:pw,role:'user'};
+  users.push(newU);
+  localStorage.setItem('sd_users', JSON.stringify(users));
+  renderUserList();
   document.getElementById('newUserId').value='';
   document.getElementById('newUserName').value='';
   document.getElementById('newUserPw').value='';
-  showToast(nm+' 추가됨','ok');
+  showToast(nm+' 추가 중...','');
+  addUserToDB(newU).then(()=>showToast(nm+' 추가됨','ok')).catch(e=>showToast('로컬 저장됨 (DB 오류: '+e.message.slice(0,30)+')','err'));
 }
 async function addUserToDB(u){
-  await sbFetch('/app_users','POST',{id:u.id,name:u.name,password:u.password,role:u.role||'user'},{
-    'Prefer':'resolution=merge-duplicates',
-    'Content-Type':'application/json'
+  return await sbFetch('/app_users','POST',{id:u.id,name:u.name,password:u.password,role:u.role||'user'},{
+    'Prefer':'resolution=merge-duplicates'
   });
 }
 function delUser(id){
   var u=users.find(function(x){return x.id===id;});
   if(!u||!confirm('"'+u.name+'" 계정을 삭제하시겠습니까?'))return;
+  var nm=u.name;
   users=users.filter(function(x){return x.id!==id;});
-  save();renderUserList();showToast(u.name+' 삭제됨');
+  localStorage.setItem('sd_users', JSON.stringify(users));
+  renderUserList();showToast(nm+' 삭제 중...','');
+  sbFetch('/app_users?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:{'Prefer':'return=minimal'}})
+    .then(()=>showToast(nm+' 삭제됨','ok'))
+    .catch(e=>showToast('로컬 삭제됨 (DB 오류: '+e.message.slice(0,30)+')','err'));
 }
 function changePw(){
   var cur=document.getElementById('curPw').value;
