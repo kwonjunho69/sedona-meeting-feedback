@@ -341,11 +341,14 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
       <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
     </div>
     <div class="fbar">
-      <span style="font-size:12px;font-weight:600;color:var(--g500)">필터:</span>
-      <button class="fbtn active" onclick="setFilt('nursing','all',this)">전체</button>
-      <button class="fbtn p" onclick="setFilt('nursing','pending',this)">⏳ 미처리</button>
-      <button class="fbtn d" onclick="setFilt('nursing','done',this)">✅ 처리완료</button>
-      <select id="nursingResF" onchange="renderTeam('nursing')" style="margin-left:auto;font-size:12px">
+      <span style="font-size:12px;font-weight:600;color:var(--g500)">처리상태:</span>
+      <select id="nursingFiltSel" onchange="setFiltSel('nursing',this.value)"
+        style="font-size:12px;padding:5px 10px;border:1.5px solid var(--g300);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;font-weight:600">
+        <option value="all">전체</option>
+        <option value="pending">⏳ 미처리</option>
+        <option value="done">✅ 처리완료</option>
+      </select>
+      <select id="nursingResF" onchange="renderTeam('nursing')" style="margin-left:auto;font-size:12px;padding:5px 10px;border:1.5px solid var(--g300);border-radius:8px;background:#fff">
         <option value="">전체 어르신</option>
       </select>
     </div>
@@ -372,11 +375,14 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
       <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
     </div>
     <div class="fbar">
-      <span style="font-size:12px;font-weight:600;color:var(--g500)">필터:</span>
-      <button class="fbtn active" onclick="setFilt('welfare','all',this)">전체</button>
-      <button class="fbtn p" onclick="setFilt('welfare','pending',this)">⏳ 미처리</button>
-      <button class="fbtn d" onclick="setFilt('welfare','done',this)">✅ 처리완료</button>
-      <select id="welfareResF" onchange="renderTeam('welfare')" style="margin-left:auto;font-size:12px">
+      <span style="font-size:12px;font-weight:600;color:var(--g500)">처리상태:</span>
+      <select id="welfareFiltSel" onchange="setFiltSel('welfare',this.value)"
+        style="font-size:12px;padding:5px 10px;border:1.5px solid var(--g300);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;font-weight:600">
+        <option value="all">전체</option>
+        <option value="pending">⏳ 미처리</option>
+        <option value="done">✅ 처리완료</option>
+      </select>
+      <select id="welfareResF" onchange="renderTeam('welfare')" style="margin-left:auto;font-size:12px;padding:5px 10px;border:1.5px solid var(--g300);border-radius:8px;background:#fff">
         <option value="">전체 어르신</option>
       </select>
     </div>
@@ -1807,6 +1813,10 @@ function renderFloorCheckboxes(team, floors){
   floors.sort((a,b)=>a==='?'?1:b==='?'?-1:a.localeCompare(b)).forEach(fl=>{
     makeLabel(fl,fl==='?'?'미지정':fl+'층',!allChecked&&fset.has(fl));
   });
+}
+function setFiltSel(team, val) {
+  teamFilt[team] = val;
+  renderTeam(team);
 }
 function setFilt(team, val, btn) {
   teamFilt[team]=val;
