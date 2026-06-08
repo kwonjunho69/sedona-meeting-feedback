@@ -259,11 +259,11 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
     <p>날짜별 회의록 · 간호/복지팀 어르신별 피드백 추적</p>
   </div>
   <div class="hdr-right">
-    <button class="api-btn" onclick="openDbModal()">
+    <button class="api-btn" onclick="openDbModal()" style="display:none">
       <div class="db-dot" id="dbDot"></div>
       <span id="dbLbl">☁️ DB 설정</span>
     </button>
-    <button class="api-btn" onclick="manualSync()" id="syncBtn" title="지금 동기화">
+    <button class="api-btn" onclick="manualSync()" id="syncBtn" title="지금 동기화" style="display:none">
       <span id="syncIcon">🔄</span>
       <span id="syncTime" style="font-size:11px">동기화</span>
     </button>
@@ -271,7 +271,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
       <span>👤 <span id="userNameDisp"></span></span>
       <button class="api-btn" onclick="doLogout()" style="padding:4px 10px;font-size:11px">로그아웃</button>
     </div>
-    <button class="api-btn" onclick="openApiModal()">
+    <button class="api-btn" onclick="openApiModal()" style="display:none">
       <div class="api-dot" id="apiDot"></div>
       <span id="apiLbl">API 키 설정</span>
     </button>
