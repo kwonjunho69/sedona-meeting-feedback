@@ -1516,9 +1516,7 @@ function deleteFbLog(meetingId, feedbackId, logIdx) {
 function renderFbRowHtml(m, f) {
   const fbDone = getFbDone(m, f.id);
   const logs = getFbStatus(m, f.id).logs || [];
-  const logId = 'log-'+m.id+'-'+f.id;
 
-  // 이력 항목 HTML
   const logItemsHtml = logs.map((lg, idx) => `
     <div class="fb-log-entry ${lg.type==='done'?'log-done-entry':'log-add-entry'}">
       <span class="log-badge ${lg.type==='done'?'log-badge-done':'log-badge-add'}">${lg.type==='done'?'처리완료':'추가처리'}</span>
@@ -1529,14 +1527,17 @@ function renderFbRowHtml(m, f) {
       ${lg.note?`<div class="log-note-txt">${esc(lg.note)}</div>`:''}
     </div>`).join('');
 
-  // 처리완료 시: 기본 접힘, 상세보기 버튼으로 펼침
-  const logsHtml = logs.length ? `
-    <div class="fb-logs-wrap">
-      <button onclick="toggleFbLogs('${logId}')"
-        style="margin-left:24px;background:none;border:none;color:var(--g400);font-size:11px;cursor:pointer;padding:1px 0;text-decoration:underline"
-        id="btn-${logId}">📋 처리이력 ${logs.length}건 보기</button>
-      <div class="fb-logs" id="${logId}" style="display:none">${logItemsHtml}</div>
-    </div>` : '';
+  // 이력 버튼은 fb-actions 안에 추가처리 옆에 배치
+  const histBtn = logs.length
+    ? `<button onclick="toggleFbLogs(this)"
+        data-cnt="${logs.length}"
+        style="background:none;border:1px solid var(--g300);color:var(--g500);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;white-space:nowrap">
+        📋 이력 ${logs.length}건</button>`
+    : '';
+
+  const logsHtml = logs.length
+    ? `<div class="fb-logs" style="display:none">${logItemsHtml}</div>`
+    : '';
 
   return `<div class="fb-row${fbDone?' fb-row-done':''}">
     <div class="fb-row-top">
@@ -1545,6 +1546,7 @@ function renderFbRowHtml(m, f) {
       ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
       <span class="fb-text${fbDone?' fb-text-done':''}">${esc(f.text)}</span>
       <div class="fb-actions">
+        ${histBtn}
         <button onclick="openAddLog('${m.id}','${f.id}')"
           style="background:none;border:1px solid var(--g300);color:var(--g600);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap"
           title="추가 처리 등록">➕ 추가처리</button>
@@ -1553,15 +1555,17 @@ function renderFbRowHtml(m, f) {
     ${logsHtml}
   </div>`;
 }
-function toggleFbLogs(logId) {
-  const el = document.getElementById(logId);
-  const btn = document.getElementById('btn-'+logId);
+function toggleFbLogs(btn) {
+  // 버튼 바로 다음 형제인 fb-logs div 찾기
+  const row = btn.closest('.fb-row');
+  if (!row) return;
+  const el = row.querySelector('.fb-logs');
   if (!el) return;
-  const open = el.style.display !== 'none';
-  el.style.display = open ? 'none' : 'flex';
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'flex';
   el.style.flexDirection = 'column';
-  const cnt = el.children.length;
-  btn.textContent = open ? `📋 처리이력 ${cnt}건 보기` : `🔼 이력 접기`;
+  const cnt = btn.dataset.cnt || '';
+  btn.textContent = isOpen ? `📋 이력 ${cnt}건` : `🔼 이력 접기`;
 }
 
 function renderDeptBlock(m, resident, teamDept, fbs) {
