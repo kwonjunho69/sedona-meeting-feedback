@@ -332,10 +332,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   <div id="nursingContent" style="display:none">
     <div class="sum-grid" id="nursingSumCards" style="display:none"></div>
 
-    <div class="floor-filter-bar" id="nursingFloorFilter">
-      <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
-    </div>
-    <div class="fbar">
+    <div class="fbar" style="flex-wrap:wrap;gap:8px">
       <span style="font-size:12px;font-weight:600;color:var(--g500)">처리상태:</span>
       <select id="nursingFiltSel" onchange="setFiltSel('nursing',this.value)"
         style="font-size:12px;padding:5px 10px;border:1.5px solid var(--g300);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;font-weight:600">
@@ -343,9 +340,11 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
         <option value="pending">⏳ 미처리</option>
         <option value="done">✅ 처리완료</option>
       </select>
-      <select id="nursingResF" onchange="renderTeam('nursing')" style="margin-left:auto;font-size:12px;padding:5px 10px;border:1.5px solid var(--g300);border-radius:8px;background:#fff">
-        <option value="">전체 어르신</option>
-      </select>
+      <input type="text" id="nursingResF" placeholder="🔍 이름 검색..." oninput="renderTeam('nursing')"
+        style="margin-left:auto;width:130px;font-size:12px;padding:5px 10px">
+    </div>
+    <div class="floor-filter-bar" id="nursingFloorFilter">
+      <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
     </div>
     <div id="nursingList"></div>
     <div class="row" style="margin-top:12px">
@@ -361,10 +360,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   <div id="welfareContent" style="display:none">
     <div class="sum-grid" id="welfareSumCards" style="display:none"></div>
 
-    <div class="floor-filter-bar" id="welfareFloorFilter">
-      <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
-    </div>
-    <div class="fbar">
+    <div class="fbar" style="flex-wrap:wrap;gap:8px">
       <span style="font-size:12px;font-weight:600;color:var(--g500)">처리상태:</span>
       <select id="welfareFiltSel" onchange="setFiltSel('welfare',this.value)"
         style="font-size:12px;padding:5px 10px;border:1.5px solid var(--g300);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;font-weight:600">
@@ -372,9 +368,11 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
         <option value="pending">⏳ 미처리</option>
         <option value="done">✅ 처리완료</option>
       </select>
-      <select id="welfareResF" onchange="renderTeam('welfare')" style="margin-left:auto;font-size:12px;padding:5px 10px;border:1.5px solid var(--g300);border-radius:8px;background:#fff">
-        <option value="">전체 어르신</option>
-      </select>
+      <input type="text" id="welfareResF" placeholder="🔍 이름 검색..." oninput="renderTeam('welfare')"
+        style="margin-left:auto;width:130px;font-size:12px;padding:5px 10px">
+    </div>
+    <div class="floor-filter-bar" id="welfareFloorFilter">
+      <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
     </div>
     <div id="welfareList"></div>
     <div class="row" style="margin-top:12px">
@@ -1689,18 +1687,16 @@ function renderTeam(team) {
     <div class="sum-card ${team==='nursing'?'n':'w'}"><div class="num" style="color:${color}">${total}</div><div class="lbl">전체 건수</div></div>
     <div class="sum-card d"><div class="num" style="color:var(--success)">${done}</div><div class="lbl">✅ 처리완료</div></div>
     <div class="sum-card p"><div class="num" style="color:var(--warning)">${pend}</div><div class="lbl">⏳ 미처리</div></div>`;
-  // 어르신 필터 드롭다운
-  const residents=[...new Set(entries.map(e=>e.resident))].sort();
-  const sel=document.getElementById(team+'ResF');
-  const prev=sel.value;
-  sel.innerHTML='<option value="">전체 어르신</option>'+residents.map(r=>`<option value="${r}" ${r===prev?'selected':''}>${r}${getResidentRoom(r)?' ('+getResidentRoom(r)+'호)':''}</option>`).join('');
+  // 어르신 이름 검색 필터 (텍스트 입력)
+  const inp=document.getElementById(team+'ResF');
+  const resFilt=(inp?inp.value||'':'').trim();
 
   // 필터 적용
-  const filt=teamFilt[team], resFilt=sel.value;
+  const filt=teamFilt[team];
   let filtered=entries;
   if(filt==='pending') filtered=filtered.filter(e=>!e.done);
   else if(filt==='done') filtered=filtered.filter(e=>e.done);
-  if(resFilt) filtered=filtered.filter(e=>e.resident===resFilt);
+  if(resFilt) filtered=filtered.filter(e=>e.resident.includes(resFilt));
 
   // 층별 그룹핑 - 항상 1~4층 고정 표시
   const fixedFloors=['2','3','4'];
