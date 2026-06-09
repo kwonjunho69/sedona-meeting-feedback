@@ -682,7 +682,12 @@ function resName(r){ return typeof r==='string'?r:(r.name||''); }
 function resRoom(r){ return typeof r==='string'?'':(r.room||''); }
 function resFloor(r){ const rm=resRoom(r); return rm?rm.charAt(0):'?'; }
 function resDisplay(r){ const rm=resRoom(r); return resName(r)+(rm?' ('+rm+'호)':''); }
-function findResByName(name){ return residentNames.find(r=>resName(r)===name); }
+function findResByName(name){
+  if(!name) return null;
+  const n=name.trim();
+  return residentNames.find(r=>resName(r).trim()===n)
+    || residentNames.find(r=>resName(r).replace(/\s/g,'')===n.replace(/\s/g,''));
+}
 
 // ── 처리 상태 헬퍼 (피드백별 다중이력) ──
 // m.feedbackStatus[feedbackId] = { done: bool, logs: [{user, note, at, type}] }
@@ -1651,9 +1656,11 @@ function getResidentFloor(name){
   // 1) 어르신 명단의 호실 데이터 사용
   const rm=getResidentRoom(name);
   if(rm) return rm.charAt(0);
-  // 2) 명단에 호실 없으면 이름 옆 괄호 "(201호)" 패턴 시도
-  const m=name.match(/\((\d)(\d+)호?\)/);
-  if(m) return m[1];
+  // 2) 이름에 포함된 "(201호)" 패턴 시도
+  if(name){
+    const m2=name.match(/[\(（](\d)\d+호?[\)）]/);
+    if(m2) return m2[1];
+  }
   return '?';
 }
 
@@ -1936,6 +1943,9 @@ function renderResviewFloorCheckboxes() {
   if (!bar) return;
   const fset = resviewFloorFilt;
   const allChecked = fset.has('all');
+  // 경고 메시지 제거
+  const existingWarn = bar.querySelector('.floor-warn');
+  if (existingWarn) existingWarn.remove();
   while (bar.children.length > 1) bar.removeChild(bar.lastChild);
   const makeLabel = (fl, label, checked) => {
     const lbl = document.createElement('label');
@@ -1951,6 +1961,15 @@ function renderResviewFloorCheckboxes() {
   ['2','3','4'].forEach(fl => {
     makeLabel(fl, fl+'층', !allChecked && fset.has(fl));
   });
+  // 호실 데이터 여부 체크 → 없으면 안내 표시
+  const hasRoom = residentNames.some(r => resRoom(r));
+  if (!hasRoom && residentNames.length > 0) {
+    const warn = document.createElement('span');
+    warn.className = 'floor-warn';
+    warn.style.cssText = 'font-size:11px;color:var(--warning);margin-left:6px';
+    warn.textContent = '⚠ 어르신 명단에 호실을 등록해야 층 필터가 동작합니다';
+    bar.appendChild(warn);
+  }
 }
 
 function renderResview() {
