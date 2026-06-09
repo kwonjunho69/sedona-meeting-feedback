@@ -1242,15 +1242,23 @@ async function runAI() {
         appendBubble('ai', `⚠️ ${tryModel} 로 재시도 중...`);
         await new Promise(r=>setTimeout(r,1500));
       }
-      const url=`https://generativelanguage.googleapis.com/v1/models/${tryModel}:generateContent?key=${apiKey}`;
-      const res = await fetch(url,{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          systemInstruction:{parts:[{text:sysPrompt}]},
-          contents:[{role:'user',parts:[{text:`회의 날짜: ${dateVal}\n\n회의록:\n${inputText}`}]}],
-          generationConfig:{maxOutputTokens:65536, temperature:0.1}
-        })
-      });
+      // v1beta(system_instruction 지원) → 실패시 v1(인라인 프롬프트) 순으로 시도
+      const endpoints = [
+        { url:`https://generativelanguage.googleapis.com/v1beta/models/${tryModel}:generateContent?key=${apiKey}`,
+          body:{system_instruction:{parts:[{text:sysPrompt}]},
+                contents:[{role:'user',parts:[{text:`회의 날짜: ${dateVal}\n\n회의록:\n${inputText}`}]}],
+                generationConfig:{maxOutputTokens:65536,temperature:0.1}} },
+        { url:`https://generativelanguage.googleapis.com/v1/models/${tryModel}:generateContent?key=${apiKey}`,
+          body:{contents:[{role:'user',parts:[{text:`${sysPrompt}\n\n회의 날짜: ${dateVal}\n\n회의록:\n${inputText}`}]}],
+                generationConfig:{maxOutputTokens:65536,temperature:0.1}} }
+      ];
+      let res;
+      for (const ep of endpoints) {
+        res = await fetch(ep.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ep.body)});
+        if (res.ok || res.status===400) break; // 400이면 다음 endpoint 시도 안 함 (모델 자체 오류)
+        if (res.status===404||res.status===503||res.status===429) { res=null; break; }
+      }
+      if (!res) { lastErr='model not available'; continue; }
       if (res.ok) {
         const data=await res.json();
         raw=data.candidates?.[0]?.content?.parts?.[0]?.text||'';
