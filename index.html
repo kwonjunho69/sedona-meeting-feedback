@@ -447,9 +447,9 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
     <div style="margin-bottom:14px">
       <div style="font-size:12px;font-weight:600;margin-bottom:4px">모델</div>
       <select id="modelIn" style="width:100%">
-        <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (최신 · 권장)</option>
-        <option value="gemini-2.0-flash">Gemini 2.0 Flash (안정)</option>
-        <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite (빠름)</option>
+        <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (권장)</option>
+        <option value="gemini-2.5-flash-8b">Gemini 2.5 Flash 8B (빠름)</option>
+        <option value="gemini-2.5-pro">Gemini 2.5 Pro (정확)</option>
       </select>
     </div>
     <div class="row">
@@ -1231,7 +1231,7 @@ async function runAI() {
 - 한 어르신에게 여러 업무가 있으면 feedbacks 항목을 각각 분리
 - text는 내용을 충분히 이해할 수 있도록 상세하게 작성${namesCtx}`;
 
-  const fallbackModels = [modelId,'gemini-2.5-flash','gemini-2.0-flash','gemini-2.0-flash-lite']
+  const fallbackModels = [modelId,'gemini-2.5-flash','gemini-2.5-flash-8b','gemini-2.5-pro']
     .filter((m,i,a)=>a.indexOf(m)===i);
   let raw='', lastErr='';
 
@@ -1242,7 +1242,7 @@ async function runAI() {
         appendBubble('ai', `⚠️ ${tryModel} 로 재시도 중...`);
         await new Promise(r=>setTimeout(r,1500));
       }
-      const url=`https://generativelanguage.googleapis.com/v1beta/models/${tryModel}:generateContent?key=${apiKey}`;
+      const url=`https://generativelanguage.googleapis.com/v1/models/${tryModel}:generateContent?key=${apiKey}`;
       const res = await fetch(url,{
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
