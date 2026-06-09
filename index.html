@@ -1246,7 +1246,7 @@ async function runAI() {
       const res = await fetch(url,{
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
-          system_instruction:{parts:[{text:sysPrompt}]},
+          systemInstruction:{parts:[{text:sysPrompt}]},
           contents:[{role:'user',parts:[{text:`회의 날짜: ${dateVal}\n\n회의록:\n${inputText}`}]}],
           generationConfig:{maxOutputTokens:65536, temperature:0.1}
         })
