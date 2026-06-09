@@ -1704,7 +1704,7 @@ function renderTeam(team) {
 
   // 층별 그룹핑 - 항상 1~4층 고정 표시
   const fixedFloors=['2','3','4'];
-  renderFloorCheckboxes(team, fixedFloors);
+  renderFloorCheckboxes(team);
 
   // 층 체크박스 필터 적용
   const fset=floorFilt[team];
@@ -1793,7 +1793,7 @@ function toggleFloorFilt(team, floor){
   else { fset.delete('all'); if(fset.has(floor))fset.delete(floor); else fset.add(floor); if(fset.size===0)fset.add('all'); }
   renderTeam(team);
 }
-function renderFloorCheckboxes(team, floors){
+function renderFloorCheckboxes(team){
   const bar=document.getElementById(team+'FloorFilter');
   if(!bar)return;
   const fset=floorFilt[team];
@@ -1810,8 +1810,8 @@ function renderFloorCheckboxes(team, floors){
     bar.appendChild(lbl);
   };
   makeLabel('all','전체',allChecked);
-  floors.sort((a,b)=>a==='?'?1:b==='?'?-1:a.localeCompare(b)).forEach(fl=>{
-    makeLabel(fl,fl==='?'?'미지정':fl+'층',!allChecked&&fset.has(fl));
+  ['2','3','4'].forEach(fl=>{
+    makeLabel(fl,fl+'층',!allChecked&&fset.has(fl));
   });
 }
 function setFiltSel(team, val) {
@@ -1939,7 +1939,7 @@ function toggleResviewFloor(floor) {
   else { fset.delete('all'); if(fset.has(floor)) fset.delete(floor); else fset.add(floor); if(fset.size===0) fset.add('all'); }
   renderResview();
 }
-function renderResviewFloorCheckboxes(floors) {
+function renderResviewFloorCheckboxes() {
   const bar = document.getElementById('resviewFloorFilter');
   if (!bar) return;
   const fset = resviewFloorFilt;
@@ -1956,8 +1956,8 @@ function renderResviewFloorCheckboxes(floors) {
     bar.appendChild(lbl);
   };
   makeLabel('all', '전체', allChecked);
-  floors.sort((a,b) => a==='?'?1:b==='?'?-1:a.localeCompare(b,undefined,{numeric:true})).forEach(fl => {
-    makeLabel(fl, fl==='?' ? '미지정' : fl+'층', !allChecked && fset.has(fl));
+  ['2','3','4'].forEach(fl => {
+    makeLabel(fl, fl+'층', !allChecked && fset.has(fl));
   });
 }
 
@@ -2001,7 +2001,7 @@ function renderResview() {
 
   // 층 체크박스 필터 동적 생성
   const allFloors = [...new Set(allRes.map(res => getResidentFloor(res)))];
-  renderResviewFloorCheckboxes(allFloors);
+  renderResviewFloorCheckboxes();
 
   const search=(document.getElementById('resviewSearch').value||'').trim();
   let filtered=resStats;
