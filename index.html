@@ -1648,8 +1648,13 @@ function getResidentRoom(name){
   return r?resRoom(r):'';
 }
 function getResidentFloor(name){
+  // 1) 어르신 명단의 호실 데이터 사용
   const rm=getResidentRoom(name);
-  return rm?rm.charAt(0):'?';
+  if(rm) return rm.charAt(0);
+  // 2) 명단에 호실 없으면 이름 옆 괄호 "(201호)" 패턴 시도
+  const m=name.match(/\((\d)(\d+)호?\)/);
+  if(m) return m[1];
+  return '?';
 }
 
 function renderTeam(team) {
@@ -1676,9 +1681,6 @@ function renderTeam(team) {
     <div class="sum-card ${team==='nursing'?'n':'w'}"><div class="num" style="color:${color}">${total}</div><div class="lbl">전체 건수</div></div>
     <div class="sum-card d"><div class="num" style="color:var(--success)">${done}</div><div class="lbl">✅ 처리완료</div></div>
     <div class="sum-card p"><div class="num" style="color:var(--warning)">${pend}</div><div class="lbl">⏳ 미처리</div></div>`;
-  document.getElementById(team+'Prog').style.width=pct+'%';
-  document.getElementById(team+'ProgTxt').textContent=`${done}/${total} (${pct}%)`;
-
   // 어르신 필터 드롭다운
   const residents=[...new Set(entries.map(e=>e.resident))].sort();
   const sel=document.getElementById(team+'ResF');
