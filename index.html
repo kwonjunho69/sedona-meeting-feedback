@@ -1264,7 +1264,7 @@ async function runAI() {
 
   const sysPrompt = `당신은 노인요양원 케어 회의록을 분석하는 AI입니다. 반드시 아래 JSON 형식으로만 응답하세요. 마크다운 없이 순수 JSON만 출력하세요.
 
-{"meeting_date":"날짜","summary":"회의 요약 2~3문장","key_issues":["주요사항1","주요사항2"],"feedbacks":[{"resident":"어르신성명","original_name":"원문이름","corrected":false,"dept":"nursing 또는 welfare 또는 both","text":"피드백 내용 (충분히 상세하게)","priority":"high 또는 normal"}]}
+{"meeting_date":"날짜","summary":"회의 요약 2~3문장","key_issues":["주요사항1","주요사항2"],"feedbacks":[{"resident":"어르신성명","original_name":"원문이름","corrected":false,"dept":"nursing 또는 welfare 또는 both","text":"어르신별 핵심 요약 (간결)","priority":"high 또는 normal"}]}
 
 규칙:
 - nursing = 간호/의료/투약/처방/혈압/혈당/상처/욕창/낙상/물리치료
@@ -1272,7 +1272,9 @@ async function runAI() {
 - both = 간호와 복지 모두 해당
 - priority high = 즉시 처리 필요 (낙상/욕창/응급/투약오류 등)
 - 한 어르신에게 여러 업무가 있으면 feedbacks 항목을 각각 분리
-- text는 내용을 충분히 이해할 수 있도록 상세하게 작성${namesCtx}`;
+- text(어르신별 요약)는 짧고 핵심 위주로 작성. 불필요한 수식어, 배경설명 생략
+- 문장은 "~합니다","~입니다","~했습니다","~됩니다" 같은 "~니다"체로 끝내지 말고, 명사형/개조식으로 종결
+  예) "대응이 필요합니다" → "대응 필요" / "설치할 예정입니다" → "설치할 예정" / "관찰하겠습니다" → "관찰 예정" / "확인했습니다" → "확인함"${namesCtx}`;
 
   const fallbackModels = [modelId,'gemini-2.5-flash','gemini-2.5-flash-8b','gemini-2.5-pro']
     .filter((m,i,a)=>a.indexOf(m)===i);
