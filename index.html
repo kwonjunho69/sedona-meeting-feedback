@@ -2657,20 +2657,43 @@ async function deleteFeedback(){
   const m = meetings.find(x=>x.id===editTarget.meetingId);
   if(!m) return;
   const fid = editTarget.feedbackId;
+  const mid = m.id;
+
+  // 1. 로컬 상태 업데이트
   m.feedbacks = m.feedbacks.filter(x=>x.id!==fid);
-  // feedbackStatus에서도 제거
   if(m.feedbackStatus) delete m.feedbackStatus[fid];
   closeFbEditModal();
-  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  save(); // localStorage + saveToDB
   renderCurrentTab(); updateAllBadges();
   showToast('삭제 중...');
+
   try {
-    await sbFetch('/feedback_processing?feedback_id=eq.'+fid, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
-    await sbFetch('/feedbacks?id=eq.'+fid, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    // 2. feedback_processing 개별 삭제
+    await sbFetch('/feedback_processing?feedback_id=eq.'+fid,
+      {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+
+    // 3. 해당 회의의 feedbacks 전체 삭제 후 남은 항목 재등록
+    //    (개별 DELETE만으로 DB 불일치 발생하는 경우 방지용 full-resync)
+    await sbFetch('/feedbacks?meeting_id=eq.'+mid,
+      {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+
+    const remainFbs = (m.feedbacks||[]).map(f=>({
+      id:f.id, meeting_id:mid, resident:f.resident,
+      dept:f.dept||'nursing', text:f.text||'',
+      priority:f.priority||'normal', corrected:!!f.corrected,
+      original_name:f.originalName||f.resident
+    }));
+    if(remainFbs.length > 0){
+      await sbFetch('/feedbacks', {
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body: JSON.stringify(remainFbs)
+      });
+    }
     showToast('삭제 완료', 'ok');
   } catch(e) {
     console.error('deleteFeedback DB error:', e);
-    showToast('로컬 삭제됨 (DB 오류: '+e.message.slice(0,40)+')', 'err');
+    showToast('DB 삭제 오류: '+e.message.slice(0,50), 'err');
   }
 }
 
