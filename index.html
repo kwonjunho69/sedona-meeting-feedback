@@ -365,6 +365,10 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   <div id="datesEmpty" class="empty"><div class="ei">📅</div><p>분석된 회의록이 없습니다.</p></div>
   <div id="datesContent" style="display:none">
     <div class="sum-grid" id="dateSumCards" style="display:none"></div>
+    <div class="fbar" style="flex-wrap:wrap;gap:8px">
+      <input type="text" id="datesResSearch" placeholder="🔍 어르신 이름 검색..." oninput="renderDates()"
+        style="margin-left:auto;width:180px;font-size:12px;padding:5px 10px">
+    </div>
     <div id="meetingList"></div>
   </div>
 </div>
@@ -1464,9 +1468,21 @@ function renderDates() {
     <div class="sum-card d"><div class="num" style="color:var(--success)">${done}</div><div class="lbl">✅ 처리완료</div></div>
     <div class="sum-card p"><div class="num" style="color:var(--warning)">${pend}</div><div class="lbl">⏳ 미처리</div></div>`;
 
-  document.getElementById('meetingList').innerHTML = meetings.map(m=>{
+  const datesSearch = (document.getElementById('datesResSearch')?.value || '').trim();
+  const filteredMeetings = datesSearch
+    ? meetings.filter(m => (m.feedbacks||[]).some(f => (f.resident||'').includes(datesSearch)))
+    : meetings;
+
+  if (datesSearch && filteredMeetings.length === 0) {
+    document.getElementById('meetingList').innerHTML =
+      `<div class="empty"><div class="ei">🔍</div><p>'${esc(datesSearch)}' 검색 결과가 없습니다.</p></div>`;
+    return;
+  }
+
+  document.getElementById('meetingList').innerHTML = filteredMeetings.map(m=>{
     const mGroups=getMeetingGroups(m);
     const mDone=mGroups.filter(g=>g.done).length, mPend=mGroups.length-mDone;
+    const isOpen = openMeetingIds.has(m.id) || !!datesSearch;
     return `<div class="meeting-card">
       <div class="meeting-head" onclick="toggleMeeting('${m.id}')">
         <span class="date-badge">${m.date}</span>
@@ -1482,21 +1498,23 @@ function renderDates() {
         </button>
         <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="event.stopPropagation();deleteMeeting('${m.id}')">🗑</button>
       </div>
-      <div class="meeting-body ${openMeetingIds.has(m.id)?'open':''}" id="mb-${m.id}">
+      <div class="meeting-body ${isOpen?'open':''}" id="mb-${m.id}">
         <div class="meeting-summary">${esc(m.summary)}
           <button onclick="event.stopPropagation();openSummaryEdit('${m.id}')" style="float:right;background:none;border:none;cursor:pointer;color:var(--g400);font-size:12px;margin-left:8px" title="요약 수정">✏️ 수정</button>
         </div>
         ${m.keyIssues?.length?`<div class="key-issues">${m.keyIssues.map(k=>`<span class="ki-chip">${esc(k)}</span>`).join('')}</div>`:''}
-        ${renderMeetingResidents(m)}
+        ${renderMeetingResidents(m, datesSearch)}
 
       </div>
     </div>`;
   }).join('');
 }
 
-function renderMeetingResidents(m) {
+function renderMeetingResidents(m, searchVal='') {
   // 어르신 목록 추출 후 층별 → 호실 → 이름 순 정렬
-  const residents = [...new Set(m.feedbacks.map(f => f.resident))];
+  let residents = [...new Set(m.feedbacks.map(f => f.resident))];
+  if (searchVal) residents = residents.filter(res => res.includes(searchVal));
+  if (residents.length === 0) return '';
 
   // 층/호실 정보 붙이기
   const resInfo = residents.map(res => {
