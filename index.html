@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-22-2';
+    var APP_VERSION = 'v2026-06-22-3';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -1765,12 +1765,29 @@ async function deleteMeeting(id) {
     try { renderDates(); updateAllBadges(); } catch(renderErr) { console.error('deleteMeeting render error:', renderErr); }
     showToast('삭제 중...', '');
     try {
-      // 자식 테이블 먼저 삭제 (FK 제약)
+      // 자식 테이블 먼저 삭제 (FK 제약) — 각 단계 결과를 따로 확인
       await sbFetch('/feedback_processing?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
       await sbFetch('/processing_status?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
       await sbFetch('/feedbacks?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
       await sbFetch('/meetings?id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
-      showToast('삭제 완료', 'ok');
+
+      // 검증: 자식 테이블에 해당 meeting_id가 정말 안 남아있는지 재조회로 확인.
+      // (DB의 ON DELETE CASCADE나 RLS 설정이 어긋나 일부만 삭제되는 경우 방지)
+      const [leftFb, leftFp, leftSt] = await Promise.all([
+        sbFetch('/feedbacks?meeting_id=eq.'+id+'&select=id'),
+        sbFetch('/feedback_processing?meeting_id=eq.'+id+'&select=id'),
+        sbFetch('/processing_status?meeting_id=eq.'+id+'&select=id')
+      ]);
+      const leftover = (leftFb?.length||0) + (leftFp?.length||0) + (leftSt?.length||0);
+      if (leftover > 0) {
+        console.warn('deleteMeeting: 자식 테이블 잔존 데이터 재삭제 시도', {leftFb,leftFp,leftSt});
+        await sbFetch('/feedback_processing?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+        await sbFetch('/processing_status?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+        await sbFetch('/feedbacks?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+        showToast('삭제 완료 (잔존 데이터 추가 정리됨)', 'ok');
+      } else {
+        showToast('삭제 완료', 'ok');
+      }
     } catch(e) {
       console.error('deleteMeeting DB error:', e);
       showToast('로컬 삭제됨 (DB 오류: '+e.message.slice(0,40)+')', 'err');
