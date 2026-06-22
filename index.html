@@ -1,6 +1,20 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+<script>
+// 캐시된 옛 버전 페이지가 떠 있을 경우 자동으로 강제 새로고침해서 최신 버전을 받아오는 자가복구 스크립트.
+// APP_VERSION 값을 배포할 때마다 올리면, 캐시된 기기에서도 한 번은 강제로 네트워크에서
+// 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
+(function(){
+  try {
+    var APP_VERSION = 'v2026-06-22-2';
+    if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
+      sessionStorage.setItem('sd_app_version', APP_VERSION);
+      location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
+    }
+  } catch(e) {}
+})();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>세도나 시니어타운 | 회의록 피드백 관리</title>
