@@ -1512,18 +1512,18 @@ function renderDates() {
     const mDone=mGroups.filter(g=>g.done).length, mPend=mGroups.length-mDone;
     const isOpen = openMeetingIds.has(m.id) || !!datesSearch;
     return `<div class="meeting-card">
-      <div class="meeting-head" onclick="toggleMeeting('${m.id}')">
+      <div class="meeting-head" onclick="toggleMeeting('${m.id}')" style="flex-wrap:wrap">
         <span class="date-badge">${m.date}</span>
+        <button onclick="event.stopPropagation();openAddFbModal('${m.id}')"
+          style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+          ➕ 추가
+        </button>
         <span style="flex:1"></span>
         <div class="meeting-stats">
           <span class="stat-chip t">${mGroups.length}</span>
           <span class="stat-chip d">${mDone}</span>
           <span class="stat-chip p">${mPend>0?mPend:''}</span>
         </div>
-        <button onclick="event.stopPropagation();openAddFbModal('${m.id}')"
-          style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:8px">
-          ➕ 추가
-        </button>
         ${(currentUser && currentUser.role==='admin')?`<button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="event.stopPropagation();deleteMeeting('${m.id}')">🗑</button>`:''}
       </div>
       <div class="meeting-body ${isOpen?'open':''}" id="mb-${m.id}">
