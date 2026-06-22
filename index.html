@@ -11,6 +11,9 @@
 <meta name="theme-color" content="#ffffff">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="세도나 시니어타운">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <style>
 :root {
   --primary:#2563eb; --primary-light:#dbeafe;
@@ -2798,7 +2801,21 @@ async function performFeedbackDelete(meetingId, feedbackId, opts={}){
           body: JSON.stringify(remainFbs)
         });
       }
-      showToast('삭제 완료', 'ok');
+
+      // 검증: 삭제한 항목이 실제로 DB에서 사라졌는지 직접 재조회로 확인.
+      // 남아있으면(레이스/실패) 한 번 더 명시적으로 삭제 시도.
+      const verify = await sbFetch('/feedbacks?id=eq.'+fid+'&select=id');
+      if (verify && verify.length > 0) {
+        console.warn('삭제 검증 실패 — 재시도:', fid);
+        await sbFetch('/feedbacks?id=eq.'+fid, {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+        const verify2 = await sbFetch('/feedbacks?id=eq.'+fid+'&select=id');
+        if (verify2 && verify2.length > 0) {
+          console.error('삭제 재시도 후에도 DB에 남아있음:', fid);
+          showToast('⚠️ DB 삭제 확인 실패 — 다시 시도해주세요', 'err');
+          return;
+        }
+      }
+      showToast('삭제 완료 (DB 확인됨)', 'ok');
     } catch(e) {
       console.error('performFeedbackDelete DB error:', e);
       showToast('DB 삭제 오류: '+e.message.slice(0,50), 'err');
@@ -2890,7 +2907,9 @@ function closeSummaryEditModal(){
 function showToast(msg,type=''){
   const t=document.getElementById('toast');
   t.textContent=msg;t.className='toast show'+(type?' '+type:'');
-  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2500);
+  clearTimeout(t._t);
+  const dur = type==='err' ? 5000 : 2500; // 오류 메시지는 더 오래 표시
+  t._t=setTimeout(()=>t.classList.remove('show'),dur);
 }
 
 // ── INIT ──
