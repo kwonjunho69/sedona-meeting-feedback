@@ -1641,6 +1641,11 @@ function renderFbRowHtml(m, f) {
     ? `<button class="fb-icon-btn" onclick="toggleFbLogs(this)" data-cnt="${logs.length}" title="처리이력 보기">▼</button>`
     : '';
 
+  const isAdmin = !!(currentUser && currentUser.role === 'admin');
+  const quickDelBtn = isAdmin
+    ? `<button class="fb-icon-btn" style="color:var(--danger);border-color:var(--danger)" onclick="event.stopPropagation();quickDeleteFeedback('${m.id}','${f.id}')" title="이 항목 삭제">🗑</button>`
+    : '';
+
   return `<div class="fb-row${fbDone?' fb-row-done':''}">
     <div class="fb-row-top">
       <input type="checkbox" class="fb-check" data-fid="${f.id}" ${fbDone?'checked':''}
@@ -1650,6 +1655,7 @@ function renderFbRowHtml(m, f) {
       <div class="fb-actions">
         <button class="fb-icon-btn" onclick="openAddLog('${m.id}','${f.id}')" title="추가처리 등록">＋</button>
         ${histBtn}
+        ${quickDelBtn}
       </div>
     </div>
     ${logsHtml}
@@ -2729,21 +2735,21 @@ function saveFeedbackEdit(){
   showToast('피드백 수정됨','ok');
 }
 
-async function deleteFeedback(){
-  if(!editTarget) return;
+// 피드백 항목 삭제 공용 로직 (모달 삭제버튼 / 요약리스트 인라인 삭제버튼 공용)
+// 로컬 상태 즉시 제거 + DB full-resync(개별 DELETE + 전체삭제 후 재등록)로 즉시 반영
+async function performFeedbackDelete(meetingId, feedbackId, opts={}){
   if(!currentUser || currentUser.role !== 'admin'){ showToast('관리자만 삭제할 수 있습니다.', 'err'); return; }
-  if(!confirm('이 피드백 항목을 삭제하시겠습니까?')) return;
-  const m = meetings.find(x=>x.id===editTarget.meetingId);
+  if(!opts.skipConfirm && !confirm('이 항목을 삭제하시겠습니까?')) return;
+  const m = meetings.find(x=>x.id===meetingId);
   if(!m) return;
-  const fid = editTarget.feedbackId;
+  const fid = feedbackId;
   const mid = m.id;
 
   // 1. 로컬 상태 업데이트
   m.feedbacks = m.feedbacks.filter(x=>x.id!==fid);
   if(m.feedbackStatus) delete m.feedbackStatus[fid];
-  closeFbEditModal();
   save(); // localStorage + saveToDB
-  renderCurrentTab(); updateAllBadges();
+  renderAll(); updateAllBadges();
   showToast('삭제 중...');
 
   try {
@@ -2771,9 +2777,23 @@ async function deleteFeedback(){
     }
     showToast('삭제 완료', 'ok');
   } catch(e) {
-    console.error('deleteFeedback DB error:', e);
+    console.error('performFeedbackDelete DB error:', e);
     showToast('DB 삭제 오류: '+e.message.slice(0,50), 'err');
   }
+}
+
+async function deleteFeedback(){
+  if(!editTarget) return;
+  const {meetingId, feedbackId} = editTarget;
+  if(!currentUser || currentUser.role !== 'admin'){ showToast('관리자만 삭제할 수 있습니다.', 'err'); return; }
+  if(!confirm('이 피드백 항목을 삭제하시겠습니까?')) return;
+  closeFbEditModal();
+  await performFeedbackDelete(meetingId, feedbackId, {skipConfirm:true});
+}
+
+// 어르신별/간호팀/복지팀 요약리스트에서 바로 누르는 삭제버튼 (관리자 전용)
+async function quickDeleteFeedback(meetingId, feedbackId){
+  await performFeedbackDelete(meetingId, feedbackId);
 }
 
 function closeFbEditModal(){
