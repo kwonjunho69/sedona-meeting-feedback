@@ -1731,7 +1731,8 @@ async function deleteMeeting(id) {
   if (!m||!confirm(m.date+' 회의록을 삭제하시겠습니까?')) return;
   meetings=meetings.filter(x=>x.id!==id);
   localStorage.setItem('sd_meetings', JSON.stringify(meetings));
-  renderDates(); updateAllBadges(); showToast('삭제 중...', '');
+  try { renderDates(); updateAllBadges(); } catch(renderErr) { console.error('deleteMeeting render error:', renderErr); }
+  showToast('삭제 중...', '');
   try {
     // 자식 테이블 먼저 삭제 (FK 제약)
     await sbFetch('/feedback_processing?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
@@ -2748,11 +2749,19 @@ async function performFeedbackDelete(meetingId, feedbackId, opts={}){
   const fid = feedbackId;
   const mid = m.id;
 
-  // 1. 로컬 상태 업데이트
+  // 1. 로컬 상태 업데이트 (먼저 localStorage에 직접 반영 — save()/renderAll()이
+  //    아래에서 예외를 던지더라도 DB 동기화 코드는 반드시 실행되도록 분리함)
   m.feedbacks = m.feedbacks.filter(x=>x.id!==fid);
   if(m.feedbackStatus) delete m.feedbackStatus[fid];
-  save(); // localStorage + saveToDB
-  renderAll(); updateAllBadges();
+  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+
+  // 화면 갱신은 실패해도(예외 발생해도) DB 동기화를 막지 않도록 별도 try/catch로 격리
+  try {
+    renderAll();
+    updateAllBadges();
+  } catch(renderErr) {
+    console.error('performFeedbackDelete render error (DB 동기화는 계속 진행):', renderErr);
+  }
   showToast('삭제 중...');
 
   try {
@@ -2782,7 +2791,12 @@ async function performFeedbackDelete(meetingId, feedbackId, opts={}){
   } catch(e) {
     console.error('performFeedbackDelete DB error:', e);
     showToast('DB 삭제 오류: '+e.message.slice(0,50), 'err');
+    return;
   }
+
+  // 4. 나머지 테이블(meetings/processing_status/app_users 등) 백그라운드 동기화
+  //    — 실패해도 위의 핵심 삭제(2,3단계)는 이미 완료된 상태이므로 별도 처리
+  saveToDB().catch(e=>console.error('saveToDB background sync error:', e));
 }
 
 async function deleteFeedback(){
