@@ -1518,7 +1518,7 @@ function renderDates() {
         <div class="meeting-stats">
           <span class="stat-chip t">${mGroups.length}</span>
           <span class="stat-chip d">${mDone}</span>
-          <span class="stat-chip p">${mPend}</span>
+          <span class="stat-chip p">${mPend>0?mPend:''}</span>
         </div>
         <button onclick="event.stopPropagation();openAddFbModal('${m.id}')"
           style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:8px">
