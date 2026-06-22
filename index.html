@@ -1518,11 +1518,11 @@ function renderDates() {
         <div class="meeting-stats">
           <span class="stat-chip t">${mGroups.length}</span>
           <span class="stat-chip d">${mDone}</span>
-          ${mPend>0?`<span class="stat-chip p">${mPend}</span>`:''}
+          <span class="stat-chip p">${mPend}</span>
         </div>
         <button onclick="event.stopPropagation();openAddFbModal('${m.id}')"
           style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:8px">
-          ➕ 피드백 추가
+          ➕ 추가
         </button>
         ${(currentUser && currentUser.role==='admin')?`<button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="event.stopPropagation();deleteMeeting('${m.id}')">🗑</button>`:''}
       </div>
