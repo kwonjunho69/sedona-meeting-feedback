@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-22-5';
+    var APP_VERSION = 'v2026-06-22-6';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -929,11 +929,14 @@ async function sbFetch(path, opts={}) {
     ...restOpts,
     cache: 'no-store', // 브라우저가 GET 응답을 캐싱해서 삭제 후에도 옛 목록을
                         // 다시 보여주는 문제 방지 (재로그인 시 같은 URL 재요청)
+                        // ※ Cache-Control/Pragma 같은 커스텀 헤더는 넣지 않음 —
+                        //   Supabase가 CORS preflight에서 허용하지 않아 요청
+                        //   자체가 차단되는 원인이 되었음(서버 연결 실패).
+                        //   cache:'no-store'는 fetch 옵션이라 헤더 전송이
+                        //   아니므로 CORS와 무관하게 캐시를 막아줌.
     headers: {
       ...SB_HDR,
-      ...(extraHdrs||{}),
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache'
+      ...(extraHdrs||{})
     }
   });
   if (!r.ok) {
