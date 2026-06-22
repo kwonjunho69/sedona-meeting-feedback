@@ -1520,11 +1520,6 @@ function renderDates() {
         ${(currentUser && currentUser.role==='admin')?`<button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="event.stopPropagation();deleteMeeting('${m.id}')">🗑</button>`:''}
       </div>
       <div class="meeting-body ${isOpen?'open':''}" id="mb-${m.id}">
-        <div class="meeting-summary">${esc(m.summary)}
-          ${(currentUser && currentUser.role==='admin')?`<button onclick="event.stopPropagation();deleteMeetingSummary('${m.id}')" style="float:right;background:none;border:none;cursor:pointer;color:var(--danger);font-size:12px;margin-left:8px" title="요약본 삭제">🗑 삭제</button>`:''}
-          <button onclick="event.stopPropagation();openSummaryEdit('${m.id}')" style="float:right;background:none;border:none;cursor:pointer;color:var(--g400);font-size:12px;margin-left:8px" title="요약 수정">✏️ 수정</button>
-        </div>
-        ${m.keyIssues?.length?`<div class="key-issues">${m.keyIssues.map(k=>`<span class="ki-chip">${esc(k)}</span>`).join('')}</div>`:''}
         ${renderMeetingResidents(m, datesSearch)}
 
       </div>
