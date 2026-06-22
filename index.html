@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-22-7';
+    var APP_VERSION = 'v2026-06-22-8';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -289,7 +289,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
       <div class="db-dot" id="dbDot"></div>
       <span id="dbLbl">☁️ DB 설정</span>
     </button>
-    <button class="api-btn" onclick="manualSync()" id="syncBtn" title="지금 동기화" style="display:none">
+    <button class="api-btn" onclick="syncFromDB()" id="syncBtn" title="지금 동기화" style="display:none">
       <span id="syncIcon">🔄</span>
       <span id="syncTime" style="font-size:11px">동기화</span>
     </button>
@@ -753,6 +753,7 @@ let currentTab = 'input'; // 현재 활성 탭 추적
 // 이동 중 삭제한 내용이 다시 나타나는 레이스 컨디션 방지).
 let pendingMutation = 0;
 let lastDbError = ''; // loadFromDB 실패시 사용자에게 정확한 원인을 보여주기 위한 저장용
+let lastSyncTime = null;
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
 let floorFilt = { nursing: new Set(['all']), welfare: new Set(['all']) };
 let resviewFilt = 'all';
@@ -1133,6 +1134,15 @@ async function loadFromDB() {
 async function syncFromDB() {
   const ok = await loadFromDB();
   if (ok) { renderAll(); renderNames(); showToast('동기화 완료','ok'); }
+}
+
+// syncTime 표시 영역(헤더의 동기화 버튼 라벨)을 마지막 동기화 시각으로 갱신.
+// lastSyncTime이 없으면 기본 문구를 그대로 둔다.
+function updateSyncLabel(){
+  const el = document.getElementById('syncTime');
+  if (!el) return;
+  if (!lastSyncTime) { el.textContent = '동기화'; return; }
+  el.textContent = lastSyncTime.toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'});
 }
 
 function setDbDot(state) {
