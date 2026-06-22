@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-22-4';
+    var APP_VERSION = 'v2026-06-22-5';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -1059,14 +1059,16 @@ async function loadFromDB() {
   setDbDot('sync');
   setDbStatus('☁️ 서버에서 불러오는 중...');
   try {
-    const _cb = '&_=' + Date.now(); // 캐시 버스팅 (CDN/중간 캐시까지 방어)
+    // 캐시 방지는 sbFetch()의 fetch(cache:'no-store') + no-cache 헤더로 이미 처리됨.
+    // PostgREST는 인식하지 못하는 쿼리 파라미터(예: _=timestamp)를 존재하지 않는
+    // 컬럼에 대한 필터로 해석해 400 오류를 내므로, 더미 쿼리스트링을 붙이면 안 됨.
     const [meetData, fbData, stData, fpData, resData, usrData] = await Promise.all([
-      sbFetch('/meetings?order=date.desc'+_cb),
-      sbFetch('/feedbacks?order=created_at.asc'+_cb),
-      sbFetch('/processing_status?select=*'+_cb),
-      sbFetch('/feedback_processing?select=*'+_cb).catch(()=>[]),
-      sbFetch('/residents?order=name.asc'+_cb),
-      sbFetch('/app_users?select=*'+_cb)
+      sbFetch('/meetings?order=date.desc'),
+      sbFetch('/feedbacks?order=created_at.asc'),
+      sbFetch('/processing_status?select=*'),
+      sbFetch('/feedback_processing?select=*').catch(()=>[]),
+      sbFetch('/residents?order=name.asc'),
+      sbFetch('/app_users?select=*')
     ]);
 
     // 회의록 + 피드백 + 상태 조합
