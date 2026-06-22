@@ -731,6 +731,10 @@ let apiKey = '', modelId = 'gemini-2.5-flash';
 // Supabase 사용 (dbKey/dbBinId 불필요)
 let teamFilt = { nursing:'all', welfare:'all' };
 let currentTab = 'input'; // 현재 활성 탭 추적
+// 삭제 등 진행 중인 DB 변경 작업 카운터. 0보다 클 동안은 focus/visibilitychange의
+// loadFromDB()가 작업 결과를 덮어쓰지 않도록 건너뛴다 (모바일에서 앱 전환/포커스
+// 이동 중 삭제한 내용이 다시 나타나는 레이스 컨디션 방지).
+let pendingMutation = 0;
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
 let floorFilt = { nursing: new Set(['all']), welfare: new Set(['all']) };
 let resviewFilt = 'all';
@@ -1729,20 +1733,25 @@ async function deleteMeeting(id) {
   if(!currentUser || currentUser.role !== 'admin'){ showToast('관리자만 삭제할 수 있습니다.', 'err'); return; }
   const m=meetings.find(x=>x.id===id);
   if (!m||!confirm(m.date+' 회의록을 삭제하시겠습니까?')) return;
-  meetings=meetings.filter(x=>x.id!==id);
-  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
-  try { renderDates(); updateAllBadges(); } catch(renderErr) { console.error('deleteMeeting render error:', renderErr); }
-  showToast('삭제 중...', '');
+  pendingMutation++;
   try {
-    // 자식 테이블 먼저 삭제 (FK 제약)
-    await sbFetch('/feedback_processing?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
-    await sbFetch('/processing_status?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
-    await sbFetch('/feedbacks?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
-    await sbFetch('/meetings?id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
-    showToast('삭제 완료', 'ok');
-  } catch(e) {
-    console.error('deleteMeeting DB error:', e);
-    showToast('로컬 삭제됨 (DB 오류: '+e.message.slice(0,40)+')', 'err');
+    meetings=meetings.filter(x=>x.id!==id);
+    localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+    try { renderDates(); updateAllBadges(); } catch(renderErr) { console.error('deleteMeeting render error:', renderErr); }
+    showToast('삭제 중...', '');
+    try {
+      // 자식 테이블 먼저 삭제 (FK 제약)
+      await sbFetch('/feedback_processing?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+      await sbFetch('/processing_status?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+      await sbFetch('/feedbacks?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+      await sbFetch('/meetings?id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+      showToast('삭제 완료', 'ok');
+    } catch(e) {
+      console.error('deleteMeeting DB error:', e);
+      showToast('로컬 삭제됨 (DB 오류: '+e.message.slice(0,40)+')', 'err');
+    }
+  } finally {
+    pendingMutation--;
   }
 }
 
@@ -2749,54 +2758,59 @@ async function performFeedbackDelete(meetingId, feedbackId, opts={}){
   const fid = feedbackId;
   const mid = m.id;
 
-  // 1. 로컬 상태 업데이트 (먼저 localStorage에 직접 반영 — save()/renderAll()이
-  //    아래에서 예외를 던지더라도 DB 동기화 코드는 반드시 실행되도록 분리함)
-  m.feedbacks = m.feedbacks.filter(x=>x.id!==fid);
-  if(m.feedbackStatus) delete m.feedbackStatus[fid];
-  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
-
-  // 화면 갱신은 실패해도(예외 발생해도) DB 동기화를 막지 않도록 별도 try/catch로 격리
+  pendingMutation++; // 작업 중에는 focus/visibilitychange의 loadFromDB가 덮어쓰지 못하게 막음
   try {
-    renderAll();
-    updateAllBadges();
-  } catch(renderErr) {
-    console.error('performFeedbackDelete render error (DB 동기화는 계속 진행):', renderErr);
-  }
-  showToast('삭제 중...');
+    // 1. 로컬 상태 업데이트 (먼저 localStorage에 직접 반영 — save()/renderAll()이
+    //    아래에서 예외를 던지더라도 DB 동기화 코드는 반드시 실행되도록 분리함)
+    m.feedbacks = m.feedbacks.filter(x=>x.id!==fid);
+    if(m.feedbackStatus) delete m.feedbackStatus[fid];
+    localStorage.setItem('sd_meetings', JSON.stringify(meetings));
 
-  try {
-    // 2. feedback_processing 개별 삭제
-    await sbFetch('/feedback_processing?feedback_id=eq.'+fid,
-      {method:'DELETE', headers:{'Prefer':'return=minimal'}});
-
-    // 3. 해당 회의의 feedbacks 전체 삭제 후 남은 항목 재등록
-    //    (개별 DELETE만으로 DB 불일치 발생하는 경우 방지용 full-resync)
-    await sbFetch('/feedbacks?meeting_id=eq.'+mid,
-      {method:'DELETE', headers:{'Prefer':'return=minimal'}});
-
-    const remainFbs = (m.feedbacks||[]).map(f=>({
-      id:f.id, meeting_id:mid, resident:f.resident,
-      dept:f.dept||'nursing', text:f.text||'',
-      priority:f.priority||'normal', corrected:!!f.corrected,
-      original_name:f.originalName||f.resident
-    }));
-    if(remainFbs.length > 0){
-      await sbFetch('/feedbacks', {
-        method:'POST',
-        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-        body: JSON.stringify(remainFbs)
-      });
+    // 화면 갱신은 실패해도(예외 발생해도) DB 동기화를 막지 않도록 별도 try/catch로 격리
+    try {
+      renderAll();
+      updateAllBadges();
+    } catch(renderErr) {
+      console.error('performFeedbackDelete render error (DB 동기화는 계속 진행):', renderErr);
     }
-    showToast('삭제 완료', 'ok');
-  } catch(e) {
-    console.error('performFeedbackDelete DB error:', e);
-    showToast('DB 삭제 오류: '+e.message.slice(0,50), 'err');
-    return;
-  }
+    showToast('삭제 중...');
 
-  // 4. 나머지 테이블(meetings/processing_status/app_users 등) 백그라운드 동기화
-  //    — 실패해도 위의 핵심 삭제(2,3단계)는 이미 완료된 상태이므로 별도 처리
-  saveToDB().catch(e=>console.error('saveToDB background sync error:', e));
+    try {
+      // 2. feedback_processing 개별 삭제
+      await sbFetch('/feedback_processing?feedback_id=eq.'+fid,
+        {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+
+      // 3. 해당 회의의 feedbacks 전체 삭제 후 남은 항목 재등록
+      //    (개별 DELETE만으로 DB 불일치 발생하는 경우 방지용 full-resync)
+      await sbFetch('/feedbacks?meeting_id=eq.'+mid,
+        {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+
+      const remainFbs = (m.feedbacks||[]).map(f=>({
+        id:f.id, meeting_id:mid, resident:f.resident,
+        dept:f.dept||'nursing', text:f.text||'',
+        priority:f.priority||'normal', corrected:!!f.corrected,
+        original_name:f.originalName||f.resident
+      }));
+      if(remainFbs.length > 0){
+        await sbFetch('/feedbacks', {
+          method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+          body: JSON.stringify(remainFbs)
+        });
+      }
+      showToast('삭제 완료', 'ok');
+    } catch(e) {
+      console.error('performFeedbackDelete DB error:', e);
+      showToast('DB 삭제 오류: '+e.message.slice(0,50), 'err');
+      return;
+    }
+
+    // 4. 나머지 테이블(meetings/processing_status/app_users 등) 백그라운드 동기화
+    //    — 실패해도 위의 핵심 삭제(2,3단계)는 이미 완료된 상태이므로 별도 처리
+    await saveToDB().catch(e=>console.error('saveToDB background sync error:', e));
+  } finally {
+    pendingMutation--;
+  }
 }
 
 async function deleteFeedback(){
@@ -2921,14 +2935,16 @@ window.onload = async () => {
   setInterval(updateSyncLabel, 10000);
 
   document.addEventListener('visibilitychange', async()=>{
-    if(document.visibilityState==='visible'){
+    if(document.visibilityState==='visible' && pendingMutation===0){
       const ok=await loadFromDB();
       if(ok){renderAll();renderNames();}
     }
   });
 
   window.addEventListener('focus', async()=>{
-    { const ok=await loadFromDB(); if(ok){renderAll();renderNames();} }
+    if(pendingMutation===0){
+      const ok=await loadFromDB(); if(ok){renderAll();renderNames();}
+    }
   });
 };
 </script>
