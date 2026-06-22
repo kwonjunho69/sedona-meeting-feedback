@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-22-3';
+    var APP_VERSION = 'v2026-06-22-4';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -2274,17 +2274,30 @@ function renderCurrentTab() {
 }
 
 // ── TABS ──
-function switchTab(name) {
+// 데이터를 직접 보여주는 탭들은 캐시된 로컬 상태가 아니라 항상 DB에서 새로
+// 읽어온 뒤 렌더링한다 (속도가 늦어도 정확성을 우선). 캐시는 오프라인 임시
+// 백업 용도로만 두고, 화면 표시의 기준으로 쓰지 않는다.
+const DB_BACKED_TABS = new Set(['dates','nursing','welfare','resview','residents']);
+
+async function switchTab(name) {
   currentTab = name;
   document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   const idx={resview:0,nursing:1,welfare:2,input:3,dates:4,residents:5,admin:6};
   document.querySelectorAll('.ntab')[idx[name]].classList.add('active');
+
+  if (DB_BACKED_TABS.has(name) && pendingMutation===0) {
+    showToast('☁️ 서버에서 불러오는 중...', '');
+    const ok = await loadFromDB();
+    if (!ok) { showToast('⚠️ 서버 연결 실패 — 표시된 데이터가 최신이 아닐 수 있습니다', 'err'); }
+  }
+
   if(name==='dates') renderDates();
   else if(name==='nursing') renderTeam('nursing');
   else if(name==='welfare') renderTeam('welfare');
   else if(name==='resview') renderResview();
+  else if(name==='residents') renderNames();
   else if(name==='admin') renderUserList();
   else if(name==='input') populateResEntryNameList();
 }
@@ -2963,13 +2976,16 @@ window.onload = async () => {
     if(changed){history.replaceState(null,'',window.location.pathname);}
   }catch(e){}
 
-  renderNames();updateApiStatus();updateDbStatus();
+  updateApiStatus();updateDbStatus();
   document.getElementById('meetingDate').value=new Date().toISOString().slice(0,10);
 
+  // 캐시(localStorage)는 화면에 먼저 보여주지 않는다. 항상 DB에서 새로 읽어온
+  // 뒤에만 렌더링한다 — 속도가 늦더라도 표시되는 데이터의 정확성을 우선함.
+  showToast('☁️ 서버에서 불러오는 중...', '');
   {
     const ok=await loadFromDB();
-    if(ok){renderAll();renderNames();}
-    else if(meetings.length>0){renderAll();}
+    if(ok){ renderAll(); renderNames(); }
+    else { showToast('⚠️ 서버 연결 실패 — 새로고침 후 다시 시도해주세요', 'err'); }
   }
   updateAllBadges();
 
