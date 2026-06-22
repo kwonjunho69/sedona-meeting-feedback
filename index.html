@@ -78,7 +78,7 @@ textarea{width:100%;resize:vertical;line-height:1.65}
 .meeting-stats{display:flex;gap:6px;margin-left:auto;align-items:center}
 .stat-chip{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:700}
 .stat-chip.t{background:var(--g200);color:var(--g700)}
-.stat-chip.d{background:var(--success-light);color:var(--success)}
+.stat-chip.d{background:var(--primary-light);color:var(--primary)}
 .stat-chip.p{background:var(--danger-light);color:var(--danger)}
 .meeting-body{display:none;border-top:1px solid var(--g200);background:#fff}
 .meeting-body.open{display:block}
@@ -375,7 +375,14 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   <div id="datesEmpty" class="empty"><div class="ei">📅</div><p>분석된 회의록이 없습니다.</p></div>
   <div id="datesContent" style="display:none">
     <div class="sum-grid" id="dateSumCards" style="display:none"></div>
-    <div class="fbar" style="flex-wrap:wrap;gap:8px">
+    <div class="fbar" style="flex-wrap:wrap;gap:8px;align-items:center">
+      <span style="font-size:12px;font-weight:700">
+        <span style="background:var(--g200);color:var(--g700);padding:2px 8px;border-radius:10px">총건수</span>
+        <span style="margin:0 6px;color:var(--g400)">·</span>
+        <span style="background:var(--primary-light);color:var(--primary);padding:2px 8px;border-radius:10px">완료</span>
+        <span style="margin:0 6px;color:var(--g400)">·</span>
+        <span style="background:var(--danger-light);color:var(--danger);padding:2px 8px;border-radius:10px">미처리</span>
+      </span>
       <input type="text" id="datesResSearch" placeholder="🔍 어르신 이름 검색..." oninput="renderDates()"
         style="margin-left:auto;width:180px;font-size:12px;padding:5px 10px">
     </div>
@@ -1509,9 +1516,9 @@ function renderDates() {
         <span class="date-badge">${m.date}</span>
         <span style="font-size:14px;font-weight:700;flex:1;margin-left:4px">케어 회의록</span>
         <div class="meeting-stats">
-          <span class="stat-chip t">${mGroups.length}건</span>
-          <span class="stat-chip d">${mDone}완료</span>
-          ${mPend>0?`<span class="stat-chip p">${mPend}미처리</span>`:''}
+          <span class="stat-chip t">${mGroups.length}</span>
+          <span class="stat-chip d">${mDone}</span>
+          ${mPend>0?`<span class="stat-chip p">${mPend}</span>`:''}
         </div>
         <button onclick="event.stopPropagation();openAddFbModal('${m.id}')"
           style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:8px">
