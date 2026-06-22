@@ -913,7 +913,14 @@ async function sbFetch(path, opts={}) {
   const {headers: extraHdrs, ...restOpts} = opts;
   const r = await fetch(SB_REST + path, {
     ...restOpts,
-    headers: {...SB_HDR, ...(extraHdrs||{})}
+    cache: 'no-store', // 브라우저가 GET 응답을 캐싱해서 삭제 후에도 옛 목록을
+                        // 다시 보여주는 문제 방지 (재로그인 시 같은 URL 재요청)
+    headers: {
+      ...SB_HDR,
+      ...(extraHdrs||{}),
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache'
+    }
   });
   if (!r.ok) {
     const err = await r.text();
@@ -1038,13 +1045,14 @@ async function loadFromDB() {
   setDbDot('sync');
   setDbStatus('☁️ 서버에서 불러오는 중...');
   try {
+    const _cb = '&_=' + Date.now(); // 캐시 버스팅 (CDN/중간 캐시까지 방어)
     const [meetData, fbData, stData, fpData, resData, usrData] = await Promise.all([
-      sbFetch('/meetings?order=date.desc'),
-      sbFetch('/feedbacks?order=created_at.asc'),
-      sbFetch('/processing_status?select=*'),
-      sbFetch('/feedback_processing?select=*').catch(()=>[]),
-      sbFetch('/residents?order=name.asc'),
-      sbFetch('/app_users?select=*')
+      sbFetch('/meetings?order=date.desc'+_cb),
+      sbFetch('/feedbacks?order=created_at.asc'+_cb),
+      sbFetch('/processing_status?select=*'+_cb),
+      sbFetch('/feedback_processing?select=*'+_cb).catch(()=>[]),
+      sbFetch('/residents?order=name.asc'+_cb),
+      sbFetch('/app_users?select=*'+_cb)
     ]);
 
     // 회의록 + 피드백 + 상태 조합
