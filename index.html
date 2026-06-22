@@ -315,10 +315,13 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
           <label style="font-size:12px;font-weight:600;color:var(--g500);display:block;margin-bottom:4px">📅 일자</label>
           <input type="date" id="resEntryDate" style="width:160px">
         </div>
-        <div style="flex:1;min-width:160px">
+        <div style="flex:1;min-width:160px;position:relative">
           <label style="font-size:12px;font-weight:600;color:var(--g500);display:block;margin-bottom:4px">👤 어르신명</label>
-          <input type="text" id="resEntryName" list="resEntryNameList" placeholder="어르신 성명 입력" style="width:100%">
-          <datalist id="resEntryNameList"></datalist>
+          <input type="text" id="resEntryName" placeholder="어르신 성명 입력" autocomplete="off"
+            oninput="showResNameSuggestions()" onfocus="showResNameSuggestions()" style="width:100%">
+          <div id="resEntryNameSuggest" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;
+            border:1.5px solid var(--g300);border-radius:8px;margin-top:2px;max-height:220px;overflow-y:auto;
+            z-index:50;box-shadow:0 4px 14px rgba(0,0,0,.15)"></div>
         </div>
       </div>
       <div style="margin-bottom:10px">
@@ -2235,15 +2238,47 @@ function switchSubTab(name) {
 }
 
 function populateResEntryNameList(){
-  const dl=document.getElementById('resEntryNameList');
-  if(!dl) return;
-  dl.innerHTML = residentNames.map(r=>`<option value="${resName(r)}">`).join('');
   // 일자 기본값: 오늘
   const dateInp=document.getElementById('resEntryDate');
   if(dateInp && !dateInp.value){
     dateInp.value = new Date().toISOString().slice(0,10);
   }
 }
+
+// ── 어르신명 커스텀 자동완성 (모바일 datalist 크래시/미반영 문제 회피용) ──
+function showResNameSuggestions(){
+  const inp = document.getElementById('resEntryName');
+  const box = document.getElementById('resEntryNameSuggest');
+  if(!inp || !box) return;
+  const val = inp.value.trim();
+  let list = val ? residentNames.filter(r=>resName(r).includes(val)) : residentNames;
+  list = list.slice(0, 8);
+  if (list.length === 0) { box.style.display='none'; box.innerHTML=''; return; }
+  box.innerHTML = list.map(r=>{
+    const nm = resName(r), rm = resRoom(r);
+    const safe = nm.replace(/'/g,"\\'");
+    return `<div onclick="selectResNameSuggestion('${safe}')"
+      style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--g100)">
+      ${esc(nm)}${rm?` <span style="color:var(--g400);font-size:11px">(${esc(rm)}호)</span>`:''}
+    </div>`;
+  }).join('');
+  box.style.display='block';
+}
+function selectResNameSuggestion(name){
+  const inp = document.getElementById('resEntryName');
+  if(inp) inp.value = name;
+  hideResNameSuggestions();
+}
+function hideResNameSuggestions(){
+  const box = document.getElementById('resEntryNameSuggest');
+  if(box){ box.style.display='none'; box.innerHTML=''; }
+}
+document.addEventListener('click', function(e){
+  const inp = document.getElementById('resEntryName');
+  const box = document.getElementById('resEntryNameSuggest');
+  if(!inp || !box) return;
+  if(e.target !== inp && !box.contains(e.target)) hideResNameSuggestions();
+});
 
 // 어르신 개별 상태 입력 등록
 function addResidentEntry(){
@@ -2288,6 +2323,7 @@ function addResidentEntry(){
   document.getElementById('resEntryText').value='';
   document.getElementById('resEntryNursing').checked=false;
   document.getElementById('resEntryWelfare').checked=false;
+  hideResNameSuggestions();
 }
 
 function clearResidentEntry(){
@@ -2295,6 +2331,7 @@ function clearResidentEntry(){
   document.getElementById('resEntryText').value='';
   document.getElementById('resEntryNursing').checked=false;
   document.getElementById('resEntryWelfare').checked=false;
+  hideResNameSuggestions();
 }
 
 // ── NAMES ──
