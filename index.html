@@ -1521,6 +1521,7 @@ function renderDates() {
       </div>
       <div class="meeting-body ${isOpen?'open':''}" id="mb-${m.id}">
         <div class="meeting-summary">${esc(m.summary)}
+          ${(currentUser && currentUser.role==='admin')?`<button onclick="event.stopPropagation();deleteMeetingSummary('${m.id}')" style="float:right;background:none;border:none;cursor:pointer;color:var(--danger);font-size:12px;margin-left:8px" title="요약본 삭제">🗑 삭제</button>`:''}
           <button onclick="event.stopPropagation();openSummaryEdit('${m.id}')" style="float:right;background:none;border:none;cursor:pointer;color:var(--g400);font-size:12px;margin-left:8px" title="요약 수정">✏️ 수정</button>
         </div>
         ${m.keyIssues?.length?`<div class="key-issues">${m.keyIssues.map(k=>`<span class="ki-chip">${esc(k)}</span>`).join('')}</div>`:''}
@@ -2812,6 +2813,31 @@ function openSummaryEdit(meetingId){
   document.getElementById('summaryEditIssues').value = (m.keyIssues||[]).join('\n');
   document.getElementById('summaryEditModal').classList.add('open');
   setTimeout(()=>document.getElementById('summaryEditText').focus(), 100);
+}
+
+async function deleteMeetingSummary(meetingId){
+  if(!currentUser || currentUser.role !== 'admin'){ showToast('관리자만 삭제할 수 있습니다.', 'err'); return; }
+  const m = meetings.find(x=>x.id===meetingId);
+  if(!m) return;
+  if(!confirm(m.date+' 요약본(요약문 + 핵심사항)을 삭제하시겠습니까?\n어르신별 피드백 항목은 유지됩니다.')) return;
+
+  m.summary = '';
+  m.keyIssues = [];
+  save(); // localStorage + saveToDB (meetings 테이블 upsert로 summary/key_issues 즉시 갱신)
+  renderDates();
+  showToast('삭제 중...');
+
+  try {
+    await sbFetch('/meetings?id=eq.'+meetingId, {
+      method:'PATCH',
+      headers:{'Prefer':'return=minimal'},
+      body: JSON.stringify({summary:'', key_issues:[]})
+    });
+    showToast('요약본 삭제 완료','ok');
+  } catch(e) {
+    console.error('deleteMeetingSummary DB error:', e);
+    showToast('DB 삭제 오류: '+e.message.slice(0,50), 'err');
+  }
 }
 
 function saveSummaryEdit(){
