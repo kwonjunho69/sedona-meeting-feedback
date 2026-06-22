@@ -830,6 +830,22 @@ function save() {
   localStorage.setItem('sd_users', JSON.stringify(users));
   saveToDB();
 }
+
+// 어르신 명단 비파괴적 동기화: upsert만 수행(name 충돌 시 갱신), 전체 삭제 없음.
+// 다른 사용자가 추가한 명단을 지우지 않도록 명단 "추가" 동작에서만 호출한다.
+async function syncResidentsToDB(){
+  if (residentNames.length === 0) return;
+  try {
+    await sbFetch('/residents?on_conflict=name', {
+      method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify(residentNames.map(r=>({name:resName(r),room:resRoom(r)})))
+    });
+  } catch(e) {
+    console.error('syncResidentsToDB error:', e);
+    showToast('명단 DB 동기화 오류: '+e.message.slice(0,40), 'err');
+  }
+}
 // ── 사용자 관리 ──
 // users = [{id, name, password, role}]  role: 'admin'|'user'
 let users = [];
@@ -965,19 +981,14 @@ async function saveToDB() {
       });
     }
 
-    // 5. 어르신 명단 동기화 (residentNames가 있을 때만 삭제 후 재삽입)
-    // ⚠️ 중요: residentNames가 비어있으면 DELETE 하지 않음 (빈 로컬데이터로 DB 전체 삭제 방지)
-    if (residentNames.length > 0) {
-      await sbFetch('/residents?id=gt.0', {
-        method:'DELETE',
-        headers:{'Prefer':'return=minimal'}
-      });
-      await sbFetch('/residents', {
-        method:'POST',
-        headers:{'Prefer':'return=minimal'},
-        body: JSON.stringify(residentNames.map(r=>({name:resName(r),room:resRoom(r)})))
-      });
-    }
+    // 5. 어르신 명단은 여기서 동기화하지 않음.
+    // ⚠️ 이전에는 매 saveToDB() 호출마다 residents 테이블을 전체 삭제 후
+    // 그 브라우저의 로컬 residentNames로 재삽입했음. save()는 체크박스 클릭,
+    // 비밀번호 변경 등 명단과 무관한 동작에서도 호출되므로, 다른 사용자가
+    // 방금 추가한 명단이 반영되지 않은 "오래된(stale)" 로컬 상태에서 누군가
+    // 무관한 동작만 해도 DB의 최신 명단이 통째로 덮어써져 소실되는 구조적 버그였음.
+    // → 명단 추가는 syncResidentsToDB()(upsert, 삭제 없음)로, 명단 삭제는
+    //   delName()/clearNames()의 명시적 DELETE로만 처리하도록 분리함.
 
     // 6. 사용자 upsert
     if (users.length > 0) {
@@ -2300,6 +2311,7 @@ function addName(){
   if(residentNames.some(r=>resName(r)===n)){showToast('이미 등록됨','err');return;}
   residentNames.push({name:n,room:rm});
   save();renderNames();inp.value='';if(ri)ri.value='';showToast(`${n} 추가됨`);
+  syncResidentsToDB();
 }
 function addBulk(){
   const raw=document.getElementById('bulkNames').value;
@@ -2311,6 +2323,7 @@ function addBulk(){
     if(!residentNames.some(r=>resName(r)===n)){residentNames.push({name:n,room:rm});added++;}
   });
   save();renderNames();document.getElementById('bulkNames').value='';showToast(`${added}명 추가됨`);
+  syncResidentsToDB();
 }
 function delName(i){
   const r=residentNames[i];
@@ -2344,6 +2357,7 @@ function loadNameFile(e){
       if(!residentNames.some(r=>resName(r)===n)){residentNames.push({name:n,room:rm});added++;}
     });
     save();renderNames();showToast(`${added}명 추가됨`,'ok');
+    syncResidentsToDB();
   };
   r.readAsText(f,'UTF-8');e.target.value='';
 }
