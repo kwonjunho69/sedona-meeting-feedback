@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-22-9';
+    var APP_VERSION = 'v2026-06-23-1';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -1788,8 +1788,26 @@ async function deleteMeeting(id) {
       await sbFetch('/feedbacks?meeting_id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
       await sbFetch('/meetings?id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
 
-      // 검증: 자식 테이블에 해당 meeting_id가 정말 안 남아있는지 재조회로 확인.
-      // (DB의 ON DELETE CASCADE나 RLS 설정이 어긋나 일부만 삭제되는 경우 방지)
+      // ① meetings 행 자체가 정말 삭제됐는지 확인 (RLS가 DELETE를 막으면
+      //    200/204를 반환하면서도 실제 삭제를 하지 않을 수 있음)
+      let meetLeft = await sbFetch('/meetings?id=eq.'+id+'&select=id');
+      if (meetLeft && meetLeft.length > 0) {
+        // 한 번 더 시도
+        await sbFetch('/meetings?id=eq.'+id, {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+        meetLeft = await sbFetch('/meetings?id=eq.'+id+'&select=id');
+      }
+      if (meetLeft && meetLeft.length > 0) {
+        // DB에서 삭제가 안 되면 로컬 상태를 원래대로 되돌리고 오류 표시
+        meetings = (JSON.parse(localStorage.getItem('sd_meetings')||'[]'));
+        // 방금 메모리에서 지운 meeting 복구: DB에 여전히 있으니 표시해야 함
+        if (!meetings.find(x=>x.id===id)) meetings.push(m);
+        localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+        try { renderDates(); } catch(e2){}
+        showToast('⚠️ DB 삭제 실패 — Supabase 대시보드에서 fix_cascade_and_rls.sql을 실행해주세요', 'err');
+        return;
+      }
+
+      // ② 자식 테이블에 해당 meeting_id가 정말 안 남아있는지 재조회로 확인
       const [leftFb, leftFp, leftSt] = await Promise.all([
         sbFetch('/feedbacks?meeting_id=eq.'+id+'&select=id'),
         sbFetch('/feedback_processing?meeting_id=eq.'+id+'&select=id'),
