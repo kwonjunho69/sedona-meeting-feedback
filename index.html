@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-23-2';
+    var APP_VERSION = 'v2026-06-23-3';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -968,11 +968,10 @@ async function saveToDB() {
       });
     }
 
-    // 2. 피드백 upsert
-    // ※ corrected, original_name 컬럼이 DB에 없으면 400 오류로 저장 실패함.
-    //   Supabase SQL Editor에서 아래 SQL을 한 번 실행해 두어야 함:
-    //   ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS corrected boolean DEFAULT false;
-    //   ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS original_name text;
+    // 2. 피드백 전체 교체 (DELETE → INSERT)
+    // upsert(on_conflict=id)를 쓰면 AI 재분석 시 새 ID로 생성된 feedbacks는
+    // INSERT되지만 구형 feedbacks(구 ID)가 삭제되지 않아 같은 meeting_id에
+    // 구형+신형이 중복 누적되는 버그가 있었음. 전체 교체 방식으로 해결.
     const allFbs = meetings.flatMap(m=>
       (m.feedbacks||[]).map(f=>({
         id:f.id, meeting_id:m.id, resident:f.resident,
@@ -981,25 +980,27 @@ async function saveToDB() {
         original_name:f.originalName||f.resident
       }))
     );
-    if (allFbs.length > 0) {
-      try {
-        await sbFetch('/feedbacks?on_conflict=id', {
+    try {
+      // 현재 추적 중인 모든 meeting의 feedbacks를 한 번에 삭제 후 재삽입.
+      // 이렇게 해야 AI 재분석으로 ID가 바뀐 경우에도 구형 row가 남지 않음.
+      if (meetings.length > 0) {
+        const midList = meetings.map(m=>m.id).join(',');
+        await sbFetch('/feedbacks?meeting_id=in.('+midList+')', {
+          method:'DELETE',
+          headers:{'Prefer':'return=minimal'}
+        });
+      }
+      if (allFbs.length > 0) {
+        await sbFetch('/feedbacks', {
           method:'POST',
-          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+          headers:{'Prefer':'return=minimal'},
           body: JSON.stringify(allFbs)
         });
-      } catch(fbErr) {
-        // 컬럼 부재(400)인지 확인해 구체적 안내 제공
-        const msg = fbErr && fbErr.message ? fbErr.message : String(fbErr);
-        const isColErr = msg.includes('42703') || msg.toLowerCase().includes('column');
-        if (isColErr) {
-          showToast('⚠️ feedbacks 저장 실패: DB 컬럼 누락 — Supabase SQL Editor에서 add_feedback_columns.sql 실행 필요', 'err');
-        } else {
-          showToast('⚠️ feedbacks 저장 실패: ' + msg.slice(0,60), 'err');
-        }
-        console.error('feedbacks upsert error:', msg);
-        // feedbacks 저장 실패여도 나머지 테이블(meetings 등)은 계속 저장 진행
       }
+    } catch(fbErr) {
+      const msg = fbErr && fbErr.message ? fbErr.message : String(fbErr);
+      showToast('⚠️ feedbacks 저장 실패: ' + msg.slice(0,60), 'err');
+      console.error('feedbacks save error:', msg);
     }
 
     // 3. 처리상태 upsert
