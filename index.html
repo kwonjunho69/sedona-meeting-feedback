@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-22-8';
+    var APP_VERSION = 'v2026-06-22-9';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -957,7 +957,7 @@ async function saveToDB() {
   try {
     // 1. 회의록 upsert
     if (meetings.length > 0) {
-      await sbFetch('/meetings', {
+      await sbFetch('/meetings?on_conflict=id', {
         method:'POST',
         headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
         body: JSON.stringify(meetings.map(m=>({
@@ -978,7 +978,7 @@ async function saveToDB() {
       }))
     );
     if (allFbs.length > 0) {
-      await sbFetch('/feedbacks', {
+      await sbFetch('/feedbacks?on_conflict=id', {
         method:'POST',
         headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
         body: JSON.stringify(allFbs)
@@ -1042,7 +1042,7 @@ async function saveToDB() {
 
     // 6. 사용자 upsert
     if (users.length > 0) {
-      await sbFetch('/app_users', {
+      await sbFetch('/app_users?on_conflict=id', {
         method:'POST',
         headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
         body: JSON.stringify(users)
