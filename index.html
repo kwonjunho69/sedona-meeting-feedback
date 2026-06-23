@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-23-3';
+    var APP_VERSION = 'v2026-06-23-4';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -955,9 +955,13 @@ async function saveToDB() {
   setDbDot('sync');
   document.getElementById('syncIcon').textContent = '⏳';
   try {
-    // 1. 회의록 upsert
+    // 1. 회의록 upsert (on_conflict=date)
+    // ─ id 기준 upsert는 메모리 meetings와 DB의 id가 불일치하면
+    //   UPDATE 대신 INSERT가 발생해 같은 날짜 행이 2건 이상 쌓이는 버그가 있었음.
+    // ─ date 기준으로 충돌을 감지하면 날짜가 같을 때는 항상 UPDATE가 되므로
+    //   중복이 원천 차단됨. (Supabase에 meetings_date_unique 제약 필요 → add_meetings_date_unique.sql)
     if (meetings.length > 0) {
-      await sbFetch('/meetings?on_conflict=id', {
+      await sbFetch('/meetings?on_conflict=date', {
         method:'POST',
         headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
         body: JSON.stringify(meetings.map(m=>({
