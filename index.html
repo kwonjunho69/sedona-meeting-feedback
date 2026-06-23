@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-23-1';
+    var APP_VERSION = 'v2026-06-23-2';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -969,6 +969,10 @@ async function saveToDB() {
     }
 
     // 2. 피드백 upsert
+    // ※ corrected, original_name 컬럼이 DB에 없으면 400 오류로 저장 실패함.
+    //   Supabase SQL Editor에서 아래 SQL을 한 번 실행해 두어야 함:
+    //   ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS corrected boolean DEFAULT false;
+    //   ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS original_name text;
     const allFbs = meetings.flatMap(m=>
       (m.feedbacks||[]).map(f=>({
         id:f.id, meeting_id:m.id, resident:f.resident,
@@ -978,11 +982,24 @@ async function saveToDB() {
       }))
     );
     if (allFbs.length > 0) {
-      await sbFetch('/feedbacks?on_conflict=id', {
-        method:'POST',
-        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-        body: JSON.stringify(allFbs)
-      });
+      try {
+        await sbFetch('/feedbacks?on_conflict=id', {
+          method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+          body: JSON.stringify(allFbs)
+        });
+      } catch(fbErr) {
+        // 컬럼 부재(400)인지 확인해 구체적 안내 제공
+        const msg = fbErr && fbErr.message ? fbErr.message : String(fbErr);
+        const isColErr = msg.includes('42703') || msg.toLowerCase().includes('column');
+        if (isColErr) {
+          showToast('⚠️ feedbacks 저장 실패: DB 컬럼 누락 — Supabase SQL Editor에서 add_feedback_columns.sql 실행 필요', 'err');
+        } else {
+          showToast('⚠️ feedbacks 저장 실패: ' + msg.slice(0,60), 'err');
+        }
+        console.error('feedbacks upsert error:', msg);
+        // feedbacks 저장 실패여도 나머지 테이블(meetings 등)은 계속 저장 진행
+      }
     }
 
     // 3. 처리상태 upsert
@@ -1056,6 +1073,7 @@ async function saveToDB() {
     console.error('saveToDB error:', e);
     setDbDot('err');
     document.getElementById('syncIcon').textContent = '❌';
+    showToast('⚠️ DB 저장 오류: ' + (e&&e.message?e.message.slice(0,60):String(e)), 'err');
     setTimeout(()=>saveToDB(), 15000);
   }
 }
