@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-23-5';
+    var APP_VERSION = 'v2026-06-23-6';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -990,10 +990,9 @@ async function saveToDB() {
       }
     }
 
-    // 2. 피드백 전체 교체 (DELETE → INSERT)
-    // ─ feedback_processing이 feedbacks.id를 FK 참조하므로
-    //   feedbacks 삭제 전에 feedback_processing 먼저 삭제해야 함.
-    // ─ AI 재분석 시 새 ID가 생성돼 구형 feedbacks가 누적되는 문제 해결.
+    // 2. feedbacks upsert (on_conflict=id)
+    // ※ saveToDB()에서는 절대 DELETE하지 않음 — 전체 삭제는 데이터 유실 위험.
+    //   AI 재분석 시 구형 feedbacks 정리는 runAI() 안에서 해당 meeting만 처리.
     const allFbs = meetings.flatMap(m=>
       (m.feedbacks||[]).map(f=>({
         id:f.id, meeting_id:m.id, resident:f.resident,
@@ -1003,21 +1002,10 @@ async function saveToDB() {
       }))
     );
     try {
-      if (meetings.length > 0) {
-        const midList = meetings.map(m=>m.id).join(',');
-        // feedback_processing 먼저 삭제 (feedbacks FK 참조 해제)
-        await sbFetch('/feedback_processing?meeting_id=in.('+midList+')', {
-          method:'DELETE', headers:{'Prefer':'return=minimal'}
-        }).catch(e=>console.warn('fp pre-delete warn:', e.message));
-        // feedbacks 삭제
-        await sbFetch('/feedbacks?meeting_id=in.('+midList+')', {
-          method:'DELETE', headers:{'Prefer':'return=minimal'}
-        });
-      }
       if (allFbs.length > 0) {
-        await sbFetch('/feedbacks', {
+        await sbFetch('/feedbacks?on_conflict=id', {
           method:'POST',
-          headers:{'Prefer':'return=minimal'},
+          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
           body: JSON.stringify(allFbs)
         });
       }
@@ -1482,9 +1470,25 @@ async function runAI() {
       };
     });
 
+    // AI 재분석 시 해당 날짜 meeting의 구형 feedbacks를 DB에서 정밀 삭제.
+    // saveToDB()는 upsert만 하므로 구형 ID의 feedbacks가 남음.
+    // 여기서 이 meeting에 한해서만 DELETE → 이후 save()가 새 feedbacks를 upsert.
+    const targetMeetingId = existIdx>=0 ? meetings[existIdx].id : null;
+
     if (existIdx>=0) {
       if (!confirm(`${dateVal} 회의록이 이미 있습니다. 덮어쓰시겠습니까?`)) {
         btn.disabled=false; btn.innerHTML='🤖 AI 분석'; return;
+      }
+      // 구형 feedbacks를 DB에서 삭제 (해당 meeting_id에 한정, 전체 삭제 아님)
+      if (targetMeetingId) {
+        try {
+          await sbFetch('/feedback_processing?meeting_id=eq.'+targetMeetingId,
+            {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+          await sbFetch('/feedbacks?meeting_id=eq.'+targetMeetingId,
+            {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+        } catch(delErr) {
+          console.warn('AI 재분석 구형 feedbacks 삭제 실패(무시):', delErr.message);
+        }
       }
       meetings[existIdx]={id:meetings[existIdx].id, date:dateVal, rawText:text,
         summary:parsed.summary||'', keyIssues:parsed.key_issues||[],
