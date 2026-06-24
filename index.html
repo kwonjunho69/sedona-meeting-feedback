@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-23-4';
+    var APP_VERSION = 'v2026-06-23-5';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -954,28 +954,46 @@ async function sbFetch(path, opts={}) {
 async function saveToDB() {
   setDbDot('sync');
   document.getElementById('syncIcon').textContent = '⏳';
+  // ── 각 테이블을 독립 try/catch로 분리 ──────────────────────────────
+  // 한 테이블 저장 실패가 다른 테이블 저장을 막지 않도록 함.
+  // meetings upsert 실패(on_conflict=date에 UNIQUE 제약 미설치 등)가
+  // feedbacks 저장까지 중단시키던 근본 원인을 이렇게 해결.
+  // ─────────────────────────────────────────────────────────────────
   try {
-    // 1. 회의록 upsert (on_conflict=date)
-    // ─ id 기준 upsert는 메모리 meetings와 DB의 id가 불일치하면
-    //   UPDATE 대신 INSERT가 발생해 같은 날짜 행이 2건 이상 쌓이는 버그가 있었음.
-    // ─ date 기준으로 충돌을 감지하면 날짜가 같을 때는 항상 UPDATE가 되므로
-    //   중복이 원천 차단됨. (Supabase에 meetings_date_unique 제약 필요 → add_meetings_date_unique.sql)
+
+    // 1. 회의록 upsert
+    // on_conflict=date: UNIQUE 제약이 있으면 같은 날짜는 UPDATE (중복 방지)
+    // 제약이 없으면(SQL 미실행) 400 오류 → on_conflict=id 로 폴백
     if (meetings.length > 0) {
-      await sbFetch('/meetings?on_conflict=date', {
-        method:'POST',
-        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-        body: JSON.stringify(meetings.map(m=>({
-          id:m.id, date:m.date, summary:m.summary||'',
-          key_issues:m.keyIssues||[], raw_text:m.rawText||'',
-          updated_at:new Date().toISOString()
-        })))
-      });
+      try {
+        await sbFetch('/meetings?on_conflict=date', {
+          method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+          body: JSON.stringify(meetings.map(m=>({
+            id:m.id, date:m.date, summary:m.summary||'',
+            key_issues:m.keyIssues||[], raw_text:m.rawText||'',
+            updated_at:new Date().toISOString()
+          })))
+        });
+      } catch(mErr) {
+        // UNIQUE 제약 미설치(42P10) → id 기준으로 재시도
+        console.warn('meetings on_conflict=date 실패, id로 폴백:', mErr.message);
+        await sbFetch('/meetings?on_conflict=id', {
+          method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+          body: JSON.stringify(meetings.map(m=>({
+            id:m.id, date:m.date, summary:m.summary||'',
+            key_issues:m.keyIssues||[], raw_text:m.rawText||'',
+            updated_at:new Date().toISOString()
+          })))
+        });
+      }
     }
 
     // 2. 피드백 전체 교체 (DELETE → INSERT)
-    // upsert(on_conflict=id)를 쓰면 AI 재분석 시 새 ID로 생성된 feedbacks는
-    // INSERT되지만 구형 feedbacks(구 ID)가 삭제되지 않아 같은 meeting_id에
-    // 구형+신형이 중복 누적되는 버그가 있었음. 전체 교체 방식으로 해결.
+    // ─ feedback_processing이 feedbacks.id를 FK 참조하므로
+    //   feedbacks 삭제 전에 feedback_processing 먼저 삭제해야 함.
+    // ─ AI 재분석 시 새 ID가 생성돼 구형 feedbacks가 누적되는 문제 해결.
     const allFbs = meetings.flatMap(m=>
       (m.feedbacks||[]).map(f=>({
         id:f.id, meeting_id:m.id, resident:f.resident,
@@ -985,13 +1003,15 @@ async function saveToDB() {
       }))
     );
     try {
-      // 현재 추적 중인 모든 meeting의 feedbacks를 한 번에 삭제 후 재삽입.
-      // 이렇게 해야 AI 재분석으로 ID가 바뀐 경우에도 구형 row가 남지 않음.
       if (meetings.length > 0) {
         const midList = meetings.map(m=>m.id).join(',');
+        // feedback_processing 먼저 삭제 (feedbacks FK 참조 해제)
+        await sbFetch('/feedback_processing?meeting_id=in.('+midList+')', {
+          method:'DELETE', headers:{'Prefer':'return=minimal'}
+        }).catch(e=>console.warn('fp pre-delete warn:', e.message));
+        // feedbacks 삭제
         await sbFetch('/feedbacks?meeting_id=in.('+midList+')', {
-          method:'DELETE',
-          headers:{'Prefer':'return=minimal'}
+          method:'DELETE', headers:{'Prefer':'return=minimal'}
         });
       }
       if (allFbs.length > 0) {
