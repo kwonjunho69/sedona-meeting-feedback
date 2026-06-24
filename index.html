@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-24-2';
+    var APP_VERSION = 'v2026-06-24-3';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -970,26 +970,74 @@ async function sbFetch(path, opts={}) {
 async function saveToDB() {
   setDbDot('sync');
   document.getElementById('syncIcon').textContent = '⏳';
+  // ── 모바일 경쟁 조건 방지: 모든 데이터를 첫 await 이전에 스냅샷 ────────
+  // 문제: saveToDB()는 여러 await를 포함하는데, await 사이에 visibilitychange/
+  // focus 이벤트로 loadFromDB()가 실행되어 전역 meetings[] 배열을 DB 상태로
+  // 덮어쓸 수 있다. loadFromDB() 시점에 feedbacks가 아직 DB에 없으면 빈
+  // meetings[]로 덮어써지고, 이후 await 재개 시 allFbs가 빈 배열이 되어
+  // feedbacks가 저장되지 않는다. (PC보다 모바일에서 화면 전환이 잦아 재현됨)
+  // 해결: 첫 await 전에 모든 전송 데이터를 변수에 고정(스냅샷)한다.
+  // ─────────────────────────────────────────────────────────────────
+
+  // ── 스냅샷: 첫 await 전에 모두 계산 ──
+  const meetRows = meetings.map(m=>({
+    id:m.id, date:m.date, summary:m.summary||'',
+    key_issues:m.keyIssues||[], raw_text:m.rawText||'',
+    updated_at:new Date().toISOString()
+  }));
+
+  const allFbs = meetings.flatMap(m=>
+    (m.feedbacks||[]).map(f=>({
+      id:f.id, meeting_id:m.id, resident:f.resident,
+      dept:f.dept||'nursing', text:f.text||'',
+      priority:f.priority||'normal', corrected:!!f.corrected,
+      original_name:f.originalName||f.resident
+    }))
+  );
+
+  const allStatus = [];
+  meetings.forEach(m=>{
+    Object.entries(m.status||{}).forEach(([key,val])=>{
+      const parts = key.split('|');
+      const resident = parts[0], dept = parts[1];
+      const done = typeof val==='object' ? !!val.done : !!val;
+      allStatus.push({
+        meeting_id:m.id, resident, dept, done,
+        note: (typeof val==='object'&&val.note)||'',
+        resolved_by:(typeof val==='object'&&val.resolvedBy)||'',
+        resolved_at:(typeof val==='object'&&val.resolvedAt)||''
+      });
+    });
+  });
+
+  const allFpRows = [];
+  meetings.forEach(m => {
+    (m.feedbacks||[]).forEach(f => {
+      const st = getFbStatus(m, f.id);
+      if (st.done || (st.logs && st.logs.length > 0)) {
+        allFpRows.push({
+          id: f.id, feedback_id: f.id, meeting_id: m.id,
+          resident: f.resident, dept: f.dept,
+          done: !!st.done, logs: st.logs || [],
+          updated_at: new Date().toISOString()
+        });
+      }
+    });
+  });
+  // ── 스냅샷 끝 ──────────────────────────────────────────────────────
+
   // ── 각 테이블을 독립 try/catch로 분리 ──────────────────────────────
   // 한 테이블 저장 실패가 다른 테이블 저장을 막지 않도록 함.
-  // meetings upsert 실패(on_conflict=date에 UNIQUE 제약 미설치 등)가
-  // feedbacks 저장까지 중단시키던 근본 원인을 이렇게 해결.
   // ─────────────────────────────────────────────────────────────────
   try {
 
     // 1. 회의록 upsert
-    // on_conflict=date: UNIQUE 제약이 있으면 같은 날짜는 UPDATE (중복 방지)
-    // 제약이 없으면(SQL 미실행) 400 오류 → on_conflict=id 로 폴백
-    if (meetings.length > 0) {
+    if (meetRows.length > 0) {
       try {
         await sbFetch('/meetings?on_conflict=date', {
           method:'POST',
           headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-          body: JSON.stringify(meetings.map(m=>({
-            id:m.id, date:m.date, summary:m.summary||'',
-            key_issues:m.keyIssues||[], raw_text:m.rawText||'',
-            updated_at:new Date().toISOString()
-          })))
+          body: JSON.stringify(meetRows)
         });
       } catch(mErr) {
         // UNIQUE 제약 미설치(42P10) → id 기준으로 재시도
@@ -997,11 +1045,7 @@ async function saveToDB() {
         await sbFetch('/meetings?on_conflict=id', {
           method:'POST',
           headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-          body: JSON.stringify(meetings.map(m=>({
-            id:m.id, date:m.date, summary:m.summary||'',
-            key_issues:m.keyIssues||[], raw_text:m.rawText||'',
-            updated_at:new Date().toISOString()
-          })))
+          body: JSON.stringify(meetRows)
         });
       }
     }
@@ -1009,14 +1053,6 @@ async function saveToDB() {
     // 2. feedbacks upsert (on_conflict=id)
     // ※ saveToDB()에서는 절대 DELETE하지 않음 — 전체 삭제는 데이터 유실 위험.
     //   AI 재분석 시 구형 feedbacks 정리는 runAI() 안에서 해당 meeting만 처리.
-    const allFbs = meetings.flatMap(m=>
-      (m.feedbacks||[]).map(f=>({
-        id:f.id, meeting_id:m.id, resident:f.resident,
-        dept:f.dept||'nursing', text:f.text||'',
-        priority:f.priority||'normal', corrected:!!f.corrected,
-        original_name:f.originalName||f.resident
-      }))
-    );
     try {
       if (allFbs.length > 0) {
         await sbFetch('/feedbacks?on_conflict=id', {
@@ -1032,20 +1068,6 @@ async function saveToDB() {
     }
 
     // 3. 처리상태 upsert
-    const allStatus = [];
-    meetings.forEach(m=>{
-      Object.entries(m.status||{}).forEach(([key,val])=>{
-        const parts = key.split('|');
-        const resident = parts[0], dept = parts[1];
-        const done = typeof val==='object' ? !!val.done : !!val;
-        allStatus.push({
-          meeting_id:m.id, resident, dept, done,
-          note: (typeof val==='object'&&val.note)||'',
-          resolved_by:(typeof val==='object'&&val.resolvedBy)||'',
-          resolved_at:(typeof val==='object'&&val.resolvedAt)||''
-        });
-      });
-    });
     if (allStatus.length > 0) {
       await sbFetch('/processing_status?on_conflict=meeting_id,resident,dept', {
         method:'POST',
@@ -1055,20 +1077,6 @@ async function saveToDB() {
     }
 
     // 4. feedback_processing upsert (피드백별 처리이력)
-    const allFpRows = [];
-    meetings.forEach(m => {
-      (m.feedbacks||[]).forEach(f => {
-        const st = getFbStatus(m, f.id);
-        if (st.done || (st.logs && st.logs.length > 0)) {
-          allFpRows.push({
-            id: f.id, feedback_id: f.id, meeting_id: m.id,
-            resident: f.resident, dept: f.dept,
-            done: !!st.done, logs: st.logs || [],
-            updated_at: new Date().toISOString()
-          });
-        }
-      });
-    });
     if (allFpRows.length > 0) {
       await sbFetch('/feedback_processing?on_conflict=feedback_id', {
         method:'POST',
@@ -1374,6 +1382,10 @@ async function runAI() {
   if (!dateVal) { showToast('회의 날짜를 선택해주세요.','err'); return; }
   if (!apiKey) { openApiModal(); showToast('API 키를 먼저 설정해주세요.','err'); return; }
 
+  // 모바일 경쟁 조건 방지: AI 분석 전 과정 동안 loadFromDB()가 meetings[]를
+  // 덮어쓰지 못하도록 pendingMutation 카운터를 증가시킨다.
+  pendingMutation++;
+
   const btn = document.getElementById('aiBtn');
   btn.disabled=true; btn.innerHTML='<div class="spinner"></div> 분석 중...';
   document.getElementById('chatPanel').style.display='block';
@@ -1584,8 +1596,11 @@ async function runAI() {
   } catch(e) {
     removeTyping(tid);
     appendBubble('ai',`❌ 네트워크 오류: ${e.message}`);
+  } finally {
+    // 모바일 경쟁 조건 방지: 어떤 경로로 종료되든 pendingMutation 해제
+    pendingMutation--;
   }
-  btn.disabled=false; btn.innerHTML='🤖 AI 분석';
+  btn.disabled=false; btn.innerHTML='🤖 AI 분析';
 }
 
 // ══════════════════════════
