@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-06-24-3';
+    var APP_VERSION = 'v2026-06-24-4';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -142,7 +142,7 @@ textarea{width:100%;resize:vertical;line-height:1.65}
 .fb-row-top{display:flex;align-items:center;gap:8px;padding:10px 12px}
 .pri-badge{font-size:11px;padding:2px 7px;border-radius:6px;font-weight:700;background:var(--danger-light);color:var(--danger);flex-shrink:0}
 .fb-text{flex:1;font-size:14px;line-height:1.5}
-.fb-text-done{color:var(--g400);font-size:15px;font-weight:600}
+.fb-text-done{color:var(--g400);font-size:15px;font-weight:600}.fb-text-urgent{color:#b91c1c;font-weight:700}
 .fb-check{cursor:pointer;width:16px;height:16px;flex-shrink:0;accent-color:var(--success)}
 /* 처리이력 — 풀 와이드 */
 .fb-logs{background:#f8fafc;border-top:1px solid var(--g100);padding:8px 12px;display:flex;flex-direction:column;gap:4px}
@@ -1777,8 +1777,7 @@ function renderFbRowHtml(m, f) {
     <div class="fb-row-top">
       <input type="checkbox" class="fb-check" data-fid="${f.id}" ${fbDone?'checked':''}
         onchange="toggleFbDone('${m.id}','${f.id}',this.checked)" title="처리완료 체크">
-      ${f.priority==='high'?`<span class="pri-badge">⚠️ 즉시</span>`:''}
-      <span class="fb-text${fbDone?' fb-text-done':''}">${esc(f.text)}</span>
+      <span class="fb-text${fbDone?' fb-text-done':''}${f.priority==='high'?' fb-text-urgent':''}">${esc(f.text)}</span>
       <div class="fb-actions">
         <button class="fb-icon-btn" onclick="openAddLog('${m.id}','${f.id}')" title="추가처리 등록">＋</button>
         ${histBtn}
