@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-05-1';
+    var APP_VERSION = 'v2026-07-05-2';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -771,6 +771,19 @@ let pendingMutation = 0;
 let lastDbError = ''; // loadFromDB 실패시 사용자에게 정확한 원인을 보여주기 위한 저장용
 let lastSyncTime = null;
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
+// 어르신 개별 입력으로 생성된 피드백 ID 집합 (localStorage 영속, DB 스키마 변경 불필요)
+// DB reload 후에도 source='individual' 복원에 사용
+let individualFbIds = new Set(
+  JSON.parse(localStorage.getItem('sd_individual_fb_ids') || '[]')
+);
+function markFbAsIndividual(fbId) {
+  individualFbIds.add(fbId);
+  localStorage.setItem('sd_individual_fb_ids', JSON.stringify([...individualFbIds]));
+}
+function unmarkFbAsIndividual(fbId) {
+  individualFbIds.delete(fbId);
+  localStorage.setItem('sd_individual_fb_ids', JSON.stringify([...individualFbIds]));
+}
 let floorFilt = { nursing: new Set(['all']), welfare: new Set(['all']) };
 let resviewFilt = 'all';
 let resviewFloorFilt = new Set(['all']);
