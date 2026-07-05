@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-05-2';
+    var APP_VERSION = 'v2026-07-05-3';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -784,6 +784,14 @@ function unmarkFbAsIndividual(fbId) {
   individualFbIds.delete(fbId);
   localStorage.setItem('sd_individual_fb_ids', JSON.stringify([...individualFbIds]));
 }
+// 명시적으로 삭제된 피드백 ID 집합 — saveToDB()의 동시 실행 인스턴스가
+// 구형 스냅샷으로 삭제된 항목을 DB에 재upsert하는 경쟁 조건을 방지
+const deletedFbIds = new Set();
+function markFbDeleted(id) {
+  deletedFbIds.add(id);
+  // 60초 후 자동 정리 (메모리 누수 방지)
+  setTimeout(() => deletedFbIds.delete(id), 60000);
+}
 let floorFilt = { nursing: new Set(['all']), welfare: new Set(['all']) };
 let resviewFilt = 'all';
 let resviewFloorFilt = new Set(['all']);
@@ -1000,7 +1008,9 @@ async function saveToDB() {
   }));
 
   const allFbs = meetings.flatMap(m=>
-    (m.feedbacks||[]).map(f=>({
+    (m.feedbacks||[])
+    .filter(f => !deletedFbIds.has(f.id))  // 명시 삭제된 항목은 재upsert 방지
+    .map(f=>({
       id:f.id, meeting_id:m.id, resident:f.resident,
       dept:f.dept||'nursing', text:f.text||'',
       priority:f.priority||'normal', corrected:!!f.corrected,
@@ -3206,6 +3216,10 @@ async function performFeedbackDelete(meetingId, feedbackId, opts={}){
 
   pendingMutation++; // 작업 중에는 focus/visibilitychange의 loadFromDB가 덮어쓰지 못하게 막음
   try {
+    // 0. 삭제 ID를 먼저 등록 → 동시 실행 중인 saveToDB() 인스턴스가
+    //    구형 스냅샷으로 이 항목을 DB에 재upsert하지 못하게 차단
+    markFbDeleted(fid);
+
     // 1. 로컬 상태 업데이트 (먼저 localStorage에 직접 반영 — save()/renderAll()이
     //    아래에서 예외를 던지더라도 DB 동기화 코드는 반드시 실행되도록 분리함)
     m.feedbacks = m.feedbacks.filter(x=>x.id!==fid);
@@ -3268,6 +3282,17 @@ async function performFeedbackDelete(meetingId, feedbackId, opts={}){
     // 4. 나머지 테이블(meetings/processing_status/app_users 등) 백그라운드 동기화
     //    — 실패해도 위의 핵심 삭제(2,3단계)는 이미 완료된 상태이므로 별도 처리
     await saveToDB().catch(e=>console.error('saveToDB background sync error:', e));
+
+    // 5. 최종 안전망: saveToDB()가 구형 스냅샷으로 삭제된 항목을 재upsert했을 경우 대비
+    //    명시적으로 한 번 더 삭제 (중복 호출이어도 무해)
+    try {
+      await sbFetch('/feedbacks?id=eq.'+fid,
+        {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+      await sbFetch('/feedback_processing?feedback_id=eq.'+fid,
+        {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+    } catch(safeErr) {
+      console.warn('안전망 최종 삭제 실패(무시):', safeErr.message);
+    }
   } finally {
     pendingMutation--;
   }
