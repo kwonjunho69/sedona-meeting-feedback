@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-05-3';
+    var APP_VERSION = 'v2026-07-05-4';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -1076,12 +1076,15 @@ async function saveToDB() {
     // 2. feedbacks upsert (on_conflict=id)
     // ※ saveToDB()에서는 절대 DELETE하지 않음 — 전체 삭제는 데이터 유실 위험.
     //   AI 재분석 시 구형 feedbacks 정리는 runAI() 안에서 해당 meeting만 처리.
+    // ※ allFbs는 함수 시작 시 스냅샷했지만, 스냅샷 이후 삭제된 ID가 있을 수 있으므로
+    //   실제 upsert 직전에 deletedFbIds를 재검사하여 경쟁 조건을 차단한다.
     try {
-      if (allFbs.length > 0) {
+      const fbsToUpsert = allFbs.filter(f => !deletedFbIds.has(f.id));
+      if (fbsToUpsert.length > 0) {
         await sbFetch('/feedbacks?on_conflict=id', {
           method:'POST',
           headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-          body: JSON.stringify(allFbs)
+          body: JSON.stringify(fbsToUpsert)
         });
       }
     } catch(fbErr) {
@@ -3236,31 +3239,16 @@ async function performFeedbackDelete(meetingId, feedbackId, opts={}){
     showToast('삭제 중...');
 
     try {
-      // 2. feedback_processing 개별 삭제
+      // 2. feedback_processing 직접 삭제
       await sbFetch('/feedback_processing?feedback_id=eq.'+fid,
         {method:'DELETE', headers:{'Prefer':'return=minimal'}});
 
-      // 3. 해당 회의의 feedbacks 전체 삭제 후 남은 항목 재등록
-      //    (개별 DELETE만으로 DB 불일치 발생하는 경우 방지용 full-resync)
-      await sbFetch('/feedbacks?meeting_id=eq.'+mid,
+      // 3. feedbacks 직접 삭제 (ID 지정 — 전체삭제+재삽입 방식은 재삽입 사이에
+      //    다른 saveToDB 인스턴스가 끼어들어 삭제 항목이 부활할 위험이 있음)
+      await sbFetch('/feedbacks?id=eq.'+fid,
         {method:'DELETE', headers:{'Prefer':'return=minimal'}});
 
-      const remainFbs = (m.feedbacks||[]).map(f=>({
-        id:f.id, meeting_id:mid, resident:f.resident,
-        dept:f.dept||'nursing', text:f.text||'',
-        priority:f.priority||'normal', corrected:!!f.corrected,
-        original_name:f.originalName||f.resident
-      }));
-      if(remainFbs.length > 0){
-        await sbFetch('/feedbacks', {
-          method:'POST',
-          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-          body: JSON.stringify(remainFbs)
-        });
-      }
-
-      // 검증: 삭제한 항목이 실제로 DB에서 사라졌는지 직접 재조회로 확인.
-      // 남아있으면(레이스/실패) 한 번 더 명시적으로 삭제 시도.
+      // 검증: 삭제한 항목이 실제로 DB에서 사라졌는지 확인
       const verify = await sbFetch('/feedbacks?id=eq.'+fid+'&select=id');
       if (verify && verify.length > 0) {
         console.warn('삭제 검증 실패 — 재시도:', fid);
