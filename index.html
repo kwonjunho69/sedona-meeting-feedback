@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-05-4';
+    var APP_VERSION = 'v2026-07-09-1';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -306,10 +306,10 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 
 <div class="nav">
   <div class="ntab active" onclick="switchTab('resview')">👤 어르신별 <span class="nbadge" id="resviewBadge" style="display:none"></span></div>
+  <div class="ntab" onclick="switchTab('dates')">📅 일자별 요약</div>
   <div class="ntab" onclick="switchTab('nursing')">💉 간호팀 <span class="nbadge" id="nursingBadge" style="display:none"></span></div>
   <div class="ntab" onclick="switchTab('welfare')">🤝 복지팀 <span class="nbadge" id="welfareBadge" style="display:none"></span></div>
   <div class="ntab" onclick="switchTab('input')">📝 상태 입력</div>
-  <div class="ntab" onclick="switchTab('dates')">📅 일자별 요약</div>
   <div class="ntab" onclick="switchTab('residents')">👥 어르신 명단</div>
   <div class="ntab" id="adminTab" onclick="switchTab('admin')" style="display:none">⚙️ 사용자 관리</div>
 </div>
@@ -392,16 +392,30 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   <div id="datesEmpty" class="empty"><div class="ei">📅</div><p>분석된 회의록이 없습니다.</p></div>
   <div id="datesContent" style="display:none">
     <div class="sum-grid" id="dateSumCards" style="display:none"></div>
+    <!-- 필터 바 -->
     <div class="fbar" style="flex-wrap:wrap;gap:8px;align-items:center">
-      <span style="font-size:12px;font-weight:700">
-        <span style="background:var(--g200);color:var(--g700);padding:2px 8px;border-radius:10px">총건수</span>
-        <span style="margin:0 6px;color:var(--g400)">·</span>
-        <span style="background:var(--primary-light);color:var(--primary);padding:2px 8px;border-radius:10px">완료</span>
-        <span style="margin:0 6px;color:var(--g400)">·</span>
-        <span style="background:var(--danger-light);color:var(--danger);padding:2px 8px;border-radius:10px">미처리</span>
-      </span>
+      <span style="font-size:12px;font-weight:600;color:var(--g500)">기간:</span>
+      <input type="date" id="datesFrom" onchange="renderDates()"
+        style="font-size:12px;padding:4px 8px;border:1.5px solid var(--g300);border-radius:8px;background:#fff;color:var(--g700)">
+      <span style="font-size:12px;color:var(--g400)">~</span>
+      <input type="date" id="datesTo" onchange="renderDates()"
+        style="font-size:12px;padding:4px 8px;border:1.5px solid var(--g300);border-radius:8px;background:#fff;color:var(--g700)">
+      <button onclick="clearDatesRange()" title="기간 초기화"
+        style="font-size:11px;padding:4px 8px;border:1px solid var(--g300);border-radius:6px;background:#fff;color:var(--g500);cursor:pointer">전체</button>
+    </div>
+    <div class="fbar" style="flex-wrap:wrap;gap:8px;align-items:center;margin-top:0">
+      <span style="font-size:12px;font-weight:600;color:var(--g500)">처리상태:</span>
+      <select id="datesFiltSel" onchange="setDatesFiltSel(this.value)"
+        style="font-size:12px;padding:5px 10px;border:1.5px solid var(--g300);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;font-weight:600">
+        <option value="all">전체</option>
+        <option value="pending">⏳ 미처리</option>
+        <option value="done">✅ 처리완료</option>
+      </select>
       <input type="text" id="datesResSearch" placeholder="🔍 어르신 이름 검색..." oninput="renderDates()"
-        style="margin-left:auto;width:180px;font-size:12px;padding:5px 10px">
+        style="margin-left:auto;width:130px;font-size:12px;padding:5px 10px;border:1.5px solid var(--g300);border-radius:8px">
+    </div>
+    <div class="floor-filter-bar" id="datesFloorFilter">
+      <span style="font-size:12px;font-weight:700;color:var(--g600)">🏢 층:</span>
     </div>
     <div id="meetingList"></div>
   </div>
@@ -795,6 +809,8 @@ function markFbDeleted(id) {
 let floorFilt = { nursing: new Set(['all']), welfare: new Set(['all']) };
 let resviewFilt = 'all';
 let resviewFloorFilt = new Set(['all']);
+let datesFilt = 'all';
+let datesFloorFilt = new Set(['all']);
 let pendingNote = null; // { meetingId, feedbackId, type: 'done'|'add' }
 
 // ── 어르신 명단 헬퍼 ──
@@ -1666,35 +1682,111 @@ async function runAI() {
 // ══════════════════════════
 // RENDER: 일자별 탭
 // ══════════════════════════
+// ── 일자별 필터 헬퍼 ──────────────────────────────────────────────
+function setDatesFiltSel(val) { datesFilt = val; renderDates(); }
+function clearDatesRange() {
+  const f=document.getElementById('datesFrom'), t=document.getElementById('datesTo');
+  if(f) f.value=''; if(t) t.value=''; renderDates();
+}
+function toggleDatesFloor(fl) {
+  if (fl==='all') { datesFloorFilt = new Set(['all']); }
+  else {
+    datesFloorFilt.delete('all');
+    if (datesFloorFilt.has(fl)) datesFloorFilt.delete(fl); else datesFloorFilt.add(fl);
+    if (datesFloorFilt.size===0) datesFloorFilt = new Set(['all']);
+  }
+  renderDatesFloorCheckboxes();
+  renderDates();
+}
+function renderDatesFloorCheckboxes() {
+  const bar = document.getElementById('datesFloorFilter');
+  if (!bar) return;
+  const fset = datesFloorFilt;
+  const allChecked = fset.has('all');
+  while (bar.children.length > 1) bar.removeChild(bar.lastChild);
+  const makeLabel = (fl, label, checked) => {
+    const lbl = document.createElement('label');
+    lbl.className = checked ? 'checked' : '';
+    const cb = document.createElement('input');
+    cb.type='checkbox'; cb.checked=checked;
+    cb.addEventListener('change', () => toggleDatesFloor(fl));
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(' '+label));
+    bar.appendChild(lbl);
+  };
+  makeLabel('all','전체',allChecked);
+  ['2','3','4'].forEach(fl => makeLabel(fl, fl+'층', !allChecked && fset.has(fl)));
+}
+
 function renderDates() {
   const has=meetings.length>0;
   document.getElementById('datesEmpty').style.display=has?'none':'block';
   document.getElementById('datesContent').style.display=has?'block':'none';
   if (!has) return;
 
+  // 날짜 입력 초기값: 오늘
+  const today = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD
+  const fromEl = document.getElementById('datesFrom');
+  const toEl = document.getElementById('datesTo');
+  if (fromEl && fromEl.value === '') fromEl.value = today;
+  if (toEl   && toEl.value   === '') toEl.value   = today;
+
+  const fromDate = fromEl?.value || '';
+  const toDate   = toEl?.value   || '';
+  const datesSearch = (document.getElementById('datesResSearch')?.value || '').trim();
+
+  // 층 체크박스 갱신
+  renderDatesFloorCheckboxes();
+
+  // ── 필터 적용 ──
+  let filtered = meetings;
+
+  // 1) 날짜 기간
+  if (fromDate) filtered = filtered.filter(m => m.date >= fromDate);
+  if (toDate)   filtered = filtered.filter(m => m.date <= toDate);
+
+  // 2) 어르신 이름
+  if (datesSearch) filtered = filtered.filter(m =>
+    (m.feedbacks||[]).some(f => (f.resident||'').includes(datesSearch))
+  );
+
+  // 3) 층 필터
+  if (!datesFloorFilt.has('all')) {
+    filtered = filtered.filter(m =>
+      (m.feedbacks||[]).some(f => datesFloorFilt.has(getResidentFloor(f.resident)))
+    );
+  }
+
+  // 4) 처리상태 필터
+  if (datesFilt !== 'all') {
+    filtered = filtered.filter(m => {
+      const gs = getMeetingGroups(m);
+      const pend = gs.filter(g=>!g.done).length;
+      return datesFilt==='pending' ? pend>0 : pend===0;
+    });
+  }
+
+  // 요약 카드 (전체 기준)
   const groups = getAllGroups();
   const total=groups.length, done=groups.filter(g=>g.done).length, pend=total-done;
-  document.getElementById('dateSumCards').innerHTML=`
-    <div class="sum-card t"><div class="num">${meetings.length}</div><div class="lbl">📅 회의 횟수</div></div>
-    <div class="sum-card t"><div class="num">${total}</div><div class="lbl">전체 처리건</div></div>
+  const sc = document.getElementById('dateSumCards');
+  sc.style.display='grid';
+  sc.innerHTML=`
+    <div class="sum-card t"><div class="num">${meetings.length}</div><div class="lbl">📅 전체 회의</div></div>
+    <div class="sum-card t"><div class="num">${filtered.length}</div><div class="lbl">📋 조회 건수</div></div>
     <div class="sum-card d"><div class="num" style="color:var(--success)">${done}</div><div class="lbl">✅ 처리완료</div></div>
     <div class="sum-card p"><div class="num" style="color:var(--warning)">${pend}</div><div class="lbl">⏳ 미처리</div></div>`;
 
-  const datesSearch = (document.getElementById('datesResSearch')?.value || '').trim();
-  const filteredMeetings = datesSearch
-    ? meetings.filter(m => (m.feedbacks||[]).some(f => (f.resident||'').includes(datesSearch)))
-    : meetings;
-
-  if (datesSearch && filteredMeetings.length === 0) {
+  if (filtered.length===0) {
     document.getElementById('meetingList').innerHTML =
-      `<div class="empty"><div class="ei">🔍</div><p>'${esc(datesSearch)}' 검색 결과가 없습니다.</p></div>`;
+      `<div class="empty"><div class="ei">🔍</div><p>조건에 맞는 회의록이 없습니다.</p></div>`;
     return;
   }
 
-  document.getElementById('meetingList').innerHTML = filteredMeetings.map(m=>{
+  document.getElementById('meetingList').innerHTML = filtered.map(m=>{
     const mGroups=getMeetingGroups(m);
     const mDone=mGroups.filter(g=>g.done).length, mPend=mGroups.length-mDone;
-    const isOpen = openMeetingIds.has(m.id) || !!datesSearch;
+    const isOpen = openMeetingIds.has(m.id) || !!datesSearch || !datesFloorFilt.has('all');
     return `<div class="meeting-card">
       <div class="meeting-head" onclick="toggleMeeting('${m.id}')">
         <span class="date-badge">${m.date}</span>
@@ -1711,17 +1803,20 @@ function renderDates() {
         ${(currentUser && currentUser.role==='admin')?`<button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="event.stopPropagation();deleteMeeting('${m.id}')">🗑</button>`:''}
       </div>
       <div class="meeting-body ${isOpen?'open':''}" id="mb-${m.id}">
-        ${renderMeetingResidents(m, datesSearch)}
-
+        ${renderMeetingResidents(m, datesSearch, datesFloorFilt)}
       </div>
     </div>`;
   }).join('');
 }
 
-function renderMeetingResidents(m, searchVal='') {
+function renderMeetingResidents(m, searchVal='', floorFiltSet=null) {
   // 어르신 목록 추출 후 층별 → 호실 → 이름 순 정렬
   let residents = [...new Set(m.feedbacks.map(f => f.resident))];
   if (searchVal) residents = residents.filter(res => res.includes(searchVal));
+  // 층 필터 적용 (null 또는 'all' 포함 시 전체)
+  if (floorFiltSet && !floorFiltSet.has('all')) {
+    residents = residents.filter(res => floorFiltSet.has(getResidentFloor(res)));
+  }
   if (residents.length === 0) return '';
 
   // 층/호실 정보 붙이기
