@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-09-3';
+    var APP_VERSION = 'v2026-07-09-4';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -2536,7 +2536,7 @@ async function switchTab(name) {
   document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
-  const idx={resview:0,nursing:1,welfare:2,input:3,dates:4,residents:5,admin:6};
+  const idx={resview:0,dates:1,nursing:2,welfare:3,input:4,residents:5,admin:6};
   document.querySelectorAll('.ntab')[idx[name]].classList.add('active');
 
   if (DB_BACKED_TABS.has(name) && pendingMutation===0) {
