@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-09-2';
+    var APP_VERSION = 'v2026-07-09-3';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -306,7 +306,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 
 <div class="nav">
   <div class="ntab active" onclick="switchTab('resview')">👤 어르신별 <span class="nbadge" id="resviewBadge" style="display:none"></span></div>
-  <div class="ntab" onclick="switchTab('dates')">📅 일자별 요약</div>
+  <div class="ntab" onclick="switchTab('dates')">📅 일자별</div>
   <div class="ntab" onclick="switchTab('nursing')">💉 간호팀 <span class="nbadge" id="nursingBadge" style="display:none"></span></div>
   <div class="ntab" onclick="switchTab('welfare')">🤝 복지팀 <span class="nbadge" id="welfareBadge" style="display:none"></span></div>
   <div class="ntab" onclick="switchTab('input')">📝 상태 입력</div>
@@ -1754,12 +1754,11 @@ function renderDates() {
     );
   }
 
-  // 4) 처리상태 필터
+  // 4) 처리상태 필터 (피드백별 getFbDone 직접 사용)
   if (datesFilt !== 'all') {
     filtered = filtered.filter(m => {
-      const gs = getMeetingGroups(m);
-      const pend = gs.filter(g=>!g.done).length;
-      return datesFilt==='pending' ? pend>0 : pend===0;
+      const pendCount = (m.feedbacks||[]).filter(f => !getFbDone(m, f.id)).length;
+      return datesFilt === 'pending' ? pendCount > 0 : pendCount === 0;
     });
   }
 
