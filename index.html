@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-09-4';
+    var APP_VERSION = 'v2026-07-12-1';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -781,6 +781,7 @@ let currentTab = 'input'; // 현재 활성 탭 추적
 let pendingMutation = 0;
 let lastDbError = ''; // loadFromDB 실패시 사용자에게 정확한 원인을 보여주기 위한 저장용
 let lastSyncTime = null;
+let lastLoadFromDbTime = 0; // DB에서 마지막으로 읽은 시각 (ms) — 멀티디바이스 stale-write 방지용
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
 // 어르신 개별 입력으로 생성된 피드백 ID 집합 (localStorage 영속, DB 스키마 변경 불필요)
 // DB reload 후에도 source='individual' 복원에 사용
@@ -1215,6 +1216,7 @@ async function loadFromDB() {
     setDbDot('ok');
     setDbStatus('✅ 동기화 완료 ('+new Date().toLocaleTimeString('ko-KR')+')');
     lastSyncTime = new Date();
+    lastLoadFromDbTime = Date.now(); // 멀티디바이스 stale-write 방지: 마지막 DB 읽기 시각 기록
     updateSyncLabel();
     return true;
   } catch(e) {
@@ -3258,7 +3260,7 @@ function openFeedbackEdit(meetingId, feedbackId){
   setTimeout(()=>document.getElementById('fbEditText').focus(), 100);
 }
 
-function saveFeedbackEdit(){
+async function saveFeedbackEdit(){
   if(!editTarget) return;
   const m = meetings.find(x=>x.id===editTarget.meetingId);
   if(!m) return;
@@ -3283,8 +3285,35 @@ function saveFeedbackEdit(){
   f.text = newText;
 
   closeFbEditModal();
-  save(); renderCurrentTab();
-  showToast('피드백 수정됨','ok');
+  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  renderCurrentTab();
+  updateAllBadges();
+
+  // pendingMutation 가드: DB 저장 완료 전까지 loadFromDB()가 meetings[]를 덮어쓰지 못하게 막음
+  // (버그수정: 기존 save()는 pendingMutation 없이 saveToDB()를 fire-and-forget 했기 때문에
+  //  저장 중 탭전환/포커스 이벤트가 loadFromDB()를 트리거해 수정값이 구버전으로 덮어쓰였음)
+  pendingMutation++;
+  showToast('수정 저장 중...');
+  try {
+    // 전체 saveToDB() 대신 해당 피드백만 직접 upsert → 빠르고 경쟁조건 없음
+    const fbRow = {
+      id: f.id, meeting_id: m.id,
+      resident: f.resident, dept: f.dept||'nursing',
+      text: f.text||'', priority: f.priority||'normal',
+      corrected: !!f.corrected, original_name: f.originalName||f.resident
+    };
+    await sbFetch('/feedbacks?on_conflict=id', {
+      method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify([fbRow])
+    });
+    showToast('피드백 수정됨 (DB 저장됨)', 'ok');
+  } catch(e) {
+    console.error('saveFeedbackEdit DB error:', e);
+    showToast('DB 저장 오류: '+e.message.slice(0,50), 'err');
+  } finally {
+    pendingMutation--;
+  }
 }
 
 // 피드백 항목 삭제 공용 로직 (모달 삭제버튼 / 요약리스트 인라인 삭제버튼 공용)
@@ -3490,7 +3519,20 @@ window.onload = async () => {
     document.getElementById('loginOverlay').style.display='flex';
   }
 
-  setInterval(async()=>{ await saveToDB(); updateSyncLabel(); }, 60000);
+  setInterval(async()=>{
+    if(pendingMutation===0){
+      // 멀티디바이스 stale-write 방지:
+      // 마지막 DB 읽기로부터 90초 이상 지났으면 다른 기기의 변경사항(삭제 등)을
+      // 반영한 뒤 저장한다. 구버전 데이터를 그냥 덮어쓰는 것을 막는다.
+      const stale = (Date.now() - lastLoadFromDbTime) > 90000;
+      if (stale) {
+        const ok = await loadFromDB();
+        if (ok) { renderAll(); renderNames(); }
+      }
+      await saveToDB();
+    }
+    updateSyncLabel();
+  }, 60000);
   setInterval(updateSyncLabel, 10000);
 
   document.addEventListener('visibilitychange', async()=>{
