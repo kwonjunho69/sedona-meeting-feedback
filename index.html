@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-16-1';
+    var APP_VERSION = 'v2026-07-16-2';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -1102,37 +1102,17 @@ async function saveToDB() {
 
     // 2. feedbacks upsert (on_conflict=id)
     // ※ saveToDB()에서는 절대 DELETE하지 않음 — 전체 삭제는 데이터 유실 위험.
-    // ─────────────────────────────────────────────────────────────────────
-    // 멀티디바이스 삭제 충돌 방지 (핵심 수정):
-    // 다른 기기(폰↔PC)가 삭제한 피드백을 이 기기의 stale meetings[]가 재삽입하지 않도록
-    // DB의 현재 ID 목록을 먼저 조회한 뒤 존재하는 것만 upsert 한다.
-    // 예외: sessionCreatedFbIds / individualFbIds 에 등록된 "이 세션/기기 신규 생성" 항목은
-    //       아직 DB에 없어도 반드시 삽입해야 하므로 사전확인 없이 통과시킨다.
-    // ─────────────────────────────────────────────────────────────────────
+    // ※ 멀티디바이스 삭제 충돌은 deletedFbIds(localStorage 영속) + loadFromDB() 필터로 방지.
+    //   DB 사전확인(DB pre-check)은 제거: 사전확인 쿼리가 네트워크 지연/타이밍에 따라
+    //   정상 피드백을 "DB 미존재"로 오판해 한꺼번에 누락시키는 버그를 유발했음.
     try {
-      const fbsPrefilter = allFbs.filter(f => !deletedFbIds.has(f.id));
-      if (fbsPrefilter.length > 0) {
-        let fbsToUpsert = fbsPrefilter; // 폴백: DB확인 실패 시 그대로 사용
-        try {
-          const mIds = [...new Set(fbsPrefilter.map(f => f.meeting_id))].join(',');
-          const dbExisting = await sbFetch('/feedbacks?meeting_id=in.(' + mIds + ')&select=id');
-          const dbFbIdSet = new Set((dbExisting||[]).map(f => f.id));
-          fbsToUpsert = fbsPrefilter.filter(f =>
-            dbFbIdSet.has(f.id) ||            // DB에 이미 존재 → 업데이트
-            sessionCreatedFbIds.has(f.id) ||  // 이 세션에서 새로 생성 → 삽입
-            individualFbIds.has(f.id)         // 개별입력으로 생성 → 삽입
-          );
-        } catch(preCheckErr) {
-          // DB 사전확인 실패 → deletedFbIds 필터만 적용하는 기존 방식으로 폴백
-          console.warn('FB 사전확인 실패, 기존 방식으로 폴백:', preCheckErr.message);
-        }
-        if (fbsToUpsert.length > 0) {
-          await sbFetch('/feedbacks?on_conflict=id', {
-            method:'POST',
-            headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-            body: JSON.stringify(fbsToUpsert)
-          });
-        }
+      const fbsToUpsert = allFbs.filter(f => !deletedFbIds.has(f.id));
+      if (fbsToUpsert.length > 0) {
+        await sbFetch('/feedbacks?on_conflict=id', {
+          method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+          body: JSON.stringify(fbsToUpsert)
+        });
       }
     } catch(fbErr) {
       const msg = fbErr && fbErr.message ? fbErr.message : String(fbErr);
