@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-17-1';
+    var APP_VERSION = 'v2026-07-17-2';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -1801,17 +1801,21 @@ function renderDates() {
   }
 
   document.getElementById('meetingList').innerHTML = filtered.map(m=>{
-    const mGroups=getMeetingGroups(m);
-    const mDone=mGroups.filter(g=>g.done).length, mPend=mGroups.length-mDone;
+    // 일자 카드 숫자는 AI 분석 완료 알림과 동일하게 실제 피드백 항목 수를 표시한다.
+    // 이전에는 같은 어르신의 같은 담당팀 피드백을 하나로 합친 처리 묶음 수
+    // (getMeetingGroups)를 표시해, DB에 31건이 있어도 11건처럼 보일 수 있었다.
+    const mFeedbacks=m.feedbacks||[];
+    const mDone=mFeedbacks.filter(f=>getFbDone(m,f.id)).length;
+    const mPend=mFeedbacks.length-mDone;
     const isOpen = openMeetingIds.has(m.id) || !!datesSearch || !datesFloorFilt.has('all');
     return `<div class="meeting-card">
       <div class="meeting-head" onclick="toggleMeeting('${m.id}')">
         <span class="date-badge">${m.date}</span>
         <span style="flex:1"></span>
         <div class="meeting-stats">
-          <span class="stat-chip t">${mGroups.length}</span>
-          <span class="stat-chip d">${mDone}</span>
-          <span class="stat-chip p">${mPend>0?mPend:''}</span>
+          <span class="stat-chip t" title="전체 피드백">전체 ${mFeedbacks.length}</span>
+          <span class="stat-chip d" title="처리완료 피드백">완료 ${mDone}</span>
+          <span class="stat-chip p" title="미처리 피드백">${mPend>0?'미처리 '+mPend:''}</span>
         </div>
         <button onclick="event.stopPropagation();openAddFbModal('${m.id}')"
           style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:8px">

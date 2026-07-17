@@ -1,68 +1,65 @@
-# 세도나 시니어타운 회의록 피드백 관리 — 프로젝트 컨텍스트
+# 세도나 시니어타운 회의록 피드백 관리 프로젝트 컨텍스트
 
 ## 핵심 정보
-- **앱 URL**: https://kwonjunho69.github.io/sedona-meeting-feedback/
-- **로컬 파일**: `C:\Users\WD\Documents\Claude\Projects\회의록정리\index.html` (1878줄, 단일 파일 앱)
-- **배포**: GitHub Pages (`kwonjunho69/sedona-meeting-feedback` 레포)
-- **GitHub Desktop 로컬 경로**: `C:\Users\WD\Documents\Claude\Projects\회의록정리`
-- **DB**: Supabase PostgreSQL (REST API)
 
-## Supabase 설정
-```javascript
-const SB_URL = 'https://alovgxybtgtlxlfomgub.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsb3ZneHlidGd0bHhsZm9tZ3ViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2ODkzMzQsImV4cCI6MjA5NjI2NTMzNH0.tmccVeAn1OOBBgI7T7jcy3qa8aXKm3XkkjBd_rx6HIk';
-const SB_REST = SB_URL + '/rest/v1';
-const SB_HDR = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};
-```
+- 운영 URL: `https://kwonjunho69.github.io/sedona-meeting-feedback/`
+- GitHub 저장소: `kwonjunho69/sedona-meeting-feedback`
+- 배포: GitHub Pages, `main` 브랜치
+- 프런트엔드: 단일 `index.html` 중심의 정적 웹 앱
+- 데이터베이스: Supabase PostgreSQL REST API
+- AI: Google Gemini API
 
-## Supabase 테이블
-| 테이블 | 주요 컬럼 | 비고 |
-|--------|-----------|------|
-| `meetings` | id, date, summary, key_issues, raw_text, updated_at | upsert by id |
-| `feedbacks` | id, meeting_id, resident, dept, text, priority, corrected, original_name | upsert by id |
-| `processing_status` | meeting_id, resident, dept, done, note, resolved_by, resolved_at | upsert |
-| `residents` | id (SERIAL), name, room | 전체삭제 후 재삽입 방식 |
+## 기준 파일
 
-## 데이터 구조 (localStorage)
-```javascript
-let meetings = [];       // localStorage: 'sd_meetings'
-let residentNames = [];  // localStorage: 'sd_names'  [{name, room}]
-let users = [];          // localStorage: 'sd_users'
-let currentUser = null;  // {id, name, role}
-// DEFAULT_USERS: [{id:'admin', name:'관리자', password:'1234', role:'admin'}]
-```
+- `index.html`: 현재 운영 코드. CSS와 JavaScript가 인라인으로 포함된다.
+- `meeting_prompt.js`: 회의록 분석 프롬프트와 AI 응답 파싱.
+- `manifest.json`, 아이콘 파일: PWA 메타데이터와 이미지.
+- `회의록_피드백관리.html`: 과거 보관본이며 운영 기준이 아니다.
+- `supabase_setup.sql`: 과거 초기 스키마 기록. 현재 공개 RLS 정책 때문에 운영에 다시 실행하면 안 된다.
 
-## 핵심 함수 위치 (index.html 줄 번호)
-| 함수 | 줄 | 설명 |
-|------|----|------|
-| `resName(r)` | 580 | string 또는 {name,room} 객체 처리 |
-| `resRoom(r)` | 581 | room 추출 |
-| `save()` | 615 | localStorage 저장 후 saveToDB() 호출 |
-| `sbFetch()` | 659 | Supabase REST 헬퍼 (빈 응답 처리 포함) |
-| `saveToDB()` | 675 | DB 전체 동기화 |
-| `loadFromDB()` | ~750 | DB에서 로컬로 불러오기 |
-| `delName(i)` | 1613 | 어르신 삭제 (splice + save) |
-| `doLogin()` | 1655 | 로그인 처리 |
+## 주요 데이터
 
-## 아키텍처
-- **단일 HTML 파일** (CSS + JS 인라인, 프레임워크 없음)
-- **오프라인 퍼스트**: localStorage 캐시 → saveToDB()로 Supabase 동기화
-- **AI**: Google Gemini API (회의록 분석)
-- **Supabase 동기화 패턴**:
-  - meetings/feedbacks/status: `POST` + `Prefer: resolution=merge-duplicates` (upsert)
-  - residents: `DELETE /residents?id=gt.0` 후 `POST` 재삽입 (항상 일치 보장)
+| 테이블 | 용도 |
+|---|---|
+| `meetings` | 회의 일자, 요약, 핵심 이슈, 원문 |
+| `feedbacks` | 회의별 어르신/부서 피드백 |
+| `processing_status` | 어르신·부서 단위 처리 상태 |
+| `feedback_processing` | 피드백별 처리 여부와 로그 |
+| `residents` | 어르신 이름과 호실 |
+| `app_users` | 기존 자체 로그인 사용자. Supabase Auth로 교체 필요 |
 
-## 주요 수정 이력 (해결된 버그)
-1. Supabase URL/KEY 오타 → `alovgxybtgtlxlfomgub` 프로젝트로 수정
-2. `save()`에서 `dbKey is not defined` → JSONBin 잔재 제거, `saveToDB()` 직접 호출
-3. `doLogin is not defined` → `</script` 태그 미완성으로 파싱 오류 → `</script>\n</body>\n</html>` 수정
-4. `sbFetch` JSON parse error → 빈 응답 body 처리 (text 먼저 읽기)
-5. residents 삭제 미동기화 → 전체삭제+재삽입 방식으로 변경
+브라우저에는 다음 캐시가 있다.
 
-## 배포 절차
-GitHub Desktop → Summary 입력 → **Commit to main** → **Push origin** → 1~2분 후 반영
+- `sd_meetings`: 회의와 피드백
+- `sd_names`: 어르신 명단
+- `sd_users`: 기존 자체 로그인 사용자
+- `sd_api`, `sd_model`: Gemini 설정
+- `sd_deleted_fb_ids`, `sd_individual_fb_ids`: 삭제/개별 피드백 보조 상태
 
-## 개발 환경
-- 준호오빠 (50대, 세도나 시니어타운 대표/시설장, 입소정원 84명, 경력 3년)
-- Windows PC, GitHub Desktop 사용
-- Claude Cowork 모드로 파일 직접 수정
+## 핵심 실행 흐름
+
+- `loadStorage()`: 브라우저 캐시를 읽는다.
+- `loadFromDB()`: Supabase 데이터를 병렬 조회해 화면 상태를 재구성한다.
+- `save()`: 브라우저 캐시를 갱신한 뒤 `saveToDB()`를 호출한다.
+- `saveToDB()`: 첫 await 전에 저장할 데이터를 스냅샷하고 테이블별로 upsert한다.
+- `syncResidentsToDB()`: 명단을 비파괴적으로 upsert한다.
+- `doLogin()`, `loginSuccess()`, `doLogout()`: 현재 자체 로그인 UI 흐름이다.
+- `runAI()`, `bulkReanalyze()`: Gemini 분석을 실행한다.
+
+## 알려진 구조적 위험
+
+- 현재 로그인은 서버 권한과 연결되지 않는다.
+- `app_users`에 비밀번호가 평문 저장되고 기본 관리자 비밀번호가 코드에 있다.
+- 초기 SQL의 RLS 정책이 모든 anon 접근을 허용한다.
+- 여러 사용자 입력이 `innerHTML` 템플릿으로 렌더링된다.
+- 개인정보와 API 키가 `localStorage`에 저장된다.
+
+구체적인 대응은 `SECURITY_AUDIT.md`를 따른다.
+
+## 개발 시 주의사항
+
+- `index.html`만 운영 기준으로 수정하고 과거 보관본과 이중 관리하지 않는다.
+- 저장/삭제 로직을 바꿀 때 다중 기기 경쟁 조건과 오래된 localStorage의 전체 덮어쓰기를 특히 경계한다.
+- 회의/피드백/명단 삭제는 대상 행만 명시적으로 처리한다.
+- 비밀값은 `config.js`에만 두고 Git에 커밋하지 않는다. `service_role` 키는 브라우저에 절대 넣지 않는다.
+- 운영 DB 변경 전에 백업하고 테스트 프로젝트에서 먼저 검증한다.
