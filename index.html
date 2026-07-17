@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-16-2';
+    var APP_VERSION = 'v2026-07-17-1';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -1185,19 +1185,22 @@ async function loadFromDB() {
     ]);
 
     // 회의록 + 피드백 + 상태 조합
-    // deletedFbIds 정리: DB에서 부재가 확인된 ID는 블록 목록에서 제거
-    // (영구 차단 방지 — DB에서 실제로 삭제된 것이 확인되면 더 이상 차단 불필요)
+    // deletedFbIds 정리: loadFromDB() 마다 완전히 초기화
+    // ─────────────────────────────────────────────────────────────────
+    // 문제: DB에서 읽어온 시점에 deletedFbIds에 남은 ID가 있으면
+    //   "DB에는 있지만 화면에는 숨김" 상태가 되어 피드백이 대량으로 사라지는 버그 발생
+    //   (다른 기기가 삭제된 피드백을 재삽입한 경우에도 동일하게 발생)
+    // 해결: loadFromDB() 후에는 deletedFbIds를 초기화 (DB 상태가 최신 기준)
+    //   saveToDB()의 deletedFbIds 필터는 유지 — 현재 세션 삭제 직후 재삽입 방지
+    // ─────────────────────────────────────────────────────────────────
     if (deletedFbIds.size > 0) {
-      const dbFbIdSet = new Set(fbData.map(f => f.id));
-      deletedFbIds.forEach(id => {
-        if (!dbFbIdSet.has(id)) deletedFbIds.delete(id); // DB에 없음 = 삭제 확인됨
-      });
-      localStorage.setItem('sd_deleted_fb_ids', JSON.stringify([...deletedFbIds]));
+      deletedFbIds.clear();
+      localStorage.setItem('sd_deleted_fb_ids', '[]');
     }
 
     meetings = meetData.map(m => {
       const fbs = fbData
-        .filter(f => f.meeting_id === m.id && !deletedFbIds.has(f.id)) // 삭제된 항목 제외
+        .filter(f => f.meeting_id === m.id) // DB 기준으로 모두 표시 (deletedFbIds 필터 제거)
         .map(f=>({
           id:f.id, resident:f.resident, dept:f.dept,
           text:f.text, priority:f.priority,
