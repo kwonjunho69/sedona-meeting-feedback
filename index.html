@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-17-2';
+    var APP_VERSION = 'v2026-07-17-3';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -782,6 +782,8 @@ let pendingMutation = 0;
 let lastDbError = ''; // loadFromDB 실패시 사용자에게 정확한 원인을 보여주기 위한 저장용
 let lastSyncTime = null;
 let lastLoadFromDbTime = 0; // DB에서 마지막으로 읽은 시각 (ms) — 멀티디바이스 stale-write 방지용
+let dbSaveQueue = Promise.resolve(); // 여러 저장 요청을 직렬화해 이전 저장이 최신 상태를 덮지 않게 함
+let dbLoadGeneration = 0; // 동시에 시작된 조회 중 가장 최신 응답만 화면에 적용
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
 // 어르신 개별 입력으로 생성된 피드백 ID 집합 (localStorage 영속, DB 스키마 변경 불필요)
 // DB reload 후에도 source='individual' 복원에 사용
@@ -932,7 +934,14 @@ function save() {
   localStorage.setItem('sd_meetings', JSON.stringify(meetings));
   localStorage.setItem('sd_names', JSON.stringify(residentNames));
   localStorage.setItem('sd_users', JSON.stringify(users));
-  saveToDB();
+  // 저장이 끝날 때까지 자동/포커스 DB 조회가 로컬 변경을 덮지 못하게 막는다.
+  // 짧은 시간에 여러 저장이 발생해도 반드시 요청 순서대로 실행한다.
+  pendingMutation++;
+  dbSaveQueue = dbSaveQueue
+    .catch(()=>{})
+    .then(()=>saveToDB())
+    .finally(()=>{ pendingMutation=Math.max(0,pendingMutation-1); });
+  return dbSaveQueue;
 }
 
 // 어르신 명단 비파괴적 동기화: upsert만 수행(name 충돌 시 갱신), 전체 삭제 없음.
@@ -1013,6 +1022,22 @@ async function sbFetch(path, opts={}) {
   const text = await r.text();
   if (!text || !text.trim()) return null;
   return JSON.parse(text);
+}
+
+// Supabase/PostgREST는 프로젝트 설정에 따라 한 요청의 반환 행을 1,000개로
+// 제한한다. limit/offset 페이지를 끝까지 읽지 않으면 오래된 1,000개만 남고
+// 최신 날짜의 피드백 일부가 화면에서 사라진 것처럼 보인다.
+async function sbFetchAll(path, pageSize=500) {
+  const all=[];
+  let offset=0;
+  while (true) {
+    const sep=path.includes('?')?'&':'?';
+    const page=await sbFetch(`${path}${sep}limit=${pageSize}&offset=${offset}`) || [];
+    all.push(...page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
+  }
+  return all;
 }
 
 async function saveToDB() {
@@ -1164,11 +1189,12 @@ async function saveToDB() {
     setDbDot('err');
     document.getElementById('syncIcon').textContent = '❌';
     showToast('⚠️ DB 저장 오류: ' + (e&&e.message?e.message.slice(0,60):String(e)), 'err');
-    setTimeout(()=>saveToDB(), 15000);
+    setTimeout(()=>save(), 15000);
   }
 }
 
 async function loadFromDB() {
+  const loadGeneration=++dbLoadGeneration;
   setDbDot('sync');
   setDbStatus('☁️ 서버에서 불러오는 중...');
   try {
@@ -1176,13 +1202,20 @@ async function loadFromDB() {
     // PostgREST는 인식하지 못하는 쿼리 파라미터(예: _=timestamp)를 존재하지 않는
     // 컬럼에 대한 필터로 해석해 400 오류를 내므로, 더미 쿼리스트링을 붙이면 안 됨.
     const [meetData, fbData, stData, fpData, resData, usrData] = await Promise.all([
-      sbFetch('/meetings?order=date.desc'),
-      sbFetch('/feedbacks?order=created_at.asc'),
-      sbFetch('/processing_status?select=*'),
-      sbFetch('/feedback_processing?select=*').catch(()=>[]),
-      sbFetch('/residents?order=name.asc'),
-      sbFetch('/app_users?select=*')
+      sbFetchAll('/meetings?order=date.desc,id.asc'),
+      sbFetchAll('/feedbacks?order=created_at.asc,id.asc'),
+      sbFetchAll('/processing_status?select=*&order=id.asc'),
+      sbFetchAll('/feedback_processing?select=*&order=id.asc').catch(()=>[]),
+      sbFetchAll('/residents?order=name.asc,id.asc'),
+      sbFetchAll('/app_users?select=*&order=id.asc')
     ]);
+
+    // 조회 도중 사용자가 수정/삭제했거나 더 최신 조회가 시작됐다면 이 응답은
+    // 적용하지 않는다. 다음 자동 동기화가 최신 DB 상태를 다시 가져온다.
+    if (pendingMutation>0 || loadGeneration!==dbLoadGeneration) {
+      setDbStatus('⏳ 로컬 변경 저장 중...');
+      return true;
+    }
 
     // 회의록 + 피드백 + 상태 조합
     // deletedFbIds 정리: loadFromDB() 마다 완전히 초기화
@@ -3249,11 +3282,13 @@ async function confirmAddFb() {
 
   m.feedbacks.push(newFb);
   closeAddFbModal();
-  save();
+  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
   renderAll();
-  showToast(resident + ' 어르신 피드백 추가됨', 'ok');
+  showToast(resident + ' 어르신 피드백 저장 중...');
 
-  // DB에 저장
+  // 대상 피드백만 즉시 저장한다. 전체 saveToDB()와 동시에 실행하면 다른
+  // 기기의 최신 데이터를 오래된 로컬 스냅샷으로 덮을 수 있다.
+  pendingMutation++;
   try {
     await sbFetch('/feedbacks', {
       method: 'POST',
@@ -3268,7 +3303,17 @@ async function confirmAddFb() {
         original_name: newFb.resident
       }])
     });
-  } catch(e) { console.warn('feedback DB save failed', e); }
+    showToast(resident + ' 어르신 피드백 추가됨 (DB 저장됨)', 'ok');
+  } catch(e) {
+    // DB에 실패한 항목을 화면에 성공한 것처럼 남기지 않는다.
+    m.feedbacks = m.feedbacks.filter(f=>f.id!==newFb.id);
+    localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+    renderAll();
+    console.warn('feedback DB save failed', e);
+    showToast('피드백 추가 실패: '+e.message.slice(0,50), 'err');
+  } finally {
+    pendingMutation--;
+  }
 }
 
 // ══════════════════════════
@@ -3354,7 +3399,7 @@ async function saveFeedbackEdit(){
 }
 
 // 피드백 항목 삭제 공용 로직 (모달 삭제버튼 / 요약리스트 인라인 삭제버튼 공용)
-// 로컬 상태 즉시 제거 + DB full-resync(개별 DELETE + 전체삭제 후 재등록)로 즉시 반영
+// 로컬 상태 즉시 제거 + 대상 행 DELETE로 즉시 반영
 async function performFeedbackDelete(meetingId, feedbackId, opts={}){
   if(!currentUser || currentUser.role !== 'admin'){ showToast('관리자만 삭제할 수 있습니다.', 'err'); return; }
   if(!opts.skipConfirm && !confirm('이 항목을 삭제하시겠습니까?')) return;
@@ -3413,12 +3458,8 @@ async function performFeedbackDelete(meetingId, feedbackId, opts={}){
       return;
     }
 
-    // 4. 나머지 테이블(meetings/processing_status/app_users 등) 백그라운드 동기화
-    //    — 실패해도 위의 핵심 삭제(2,3단계)는 이미 완료된 상태이므로 별도 처리
-    await saveToDB().catch(e=>console.error('saveToDB background sync error:', e));
-
-    // 5. 최종 안전망: saveToDB()가 구형 스냅샷으로 삭제된 항목을 재upsert했을 경우 대비
-    //    명시적으로 한 번 더 삭제 (중복 호출이어도 무해)
+    // 4. 최종 안전망: 동시에 시작된 구형 저장 요청이 삭제 항목을 재upsert했을
+    //    가능성에 대비해 명시적으로 한 번 더 삭제한다 (중복 호출이어도 무해).
     try {
       await sbFetch('/feedbacks?id=eq.'+fid,
         {method:'DELETE', headers:{'Prefer':'return=minimal'}});
@@ -3473,10 +3514,11 @@ async function deleteMeetingSummary(meetingId){
 
   m.summary = '';
   m.keyIssues = [];
-  save(); // localStorage + saveToDB (meetings 테이블 upsert로 summary/key_issues 즉시 갱신)
+  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
   renderDates();
   showToast('삭제 중...');
 
+  pendingMutation++;
   try {
     await sbFetch('/meetings?id=eq.'+meetingId, {
       method:'PATCH',
@@ -3487,19 +3529,37 @@ async function deleteMeetingSummary(meetingId){
   } catch(e) {
     console.error('deleteMeetingSummary DB error:', e);
     showToast('DB 삭제 오류: '+e.message.slice(0,50), 'err');
+  } finally {
+    pendingMutation--;
   }
 }
 
-function saveSummaryEdit(){
+async function saveSummaryEdit(){
   if(!summaryEditTarget) return;
   const m = meetings.find(x=>x.id===summaryEditTarget);
   if(!m) return;
+  const meetingId=m.id;
   m.summary = document.getElementById('summaryEditText').value.trim();
   m.keyIssues = document.getElementById('summaryEditIssues').value
     .split('\n').map(s=>s.trim()).filter(Boolean);
   closeSummaryEditModal();
-  save(); renderDates();
-  showToast('요약 수정됨','ok');
+  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  renderDates();
+  showToast('요약 저장 중...');
+  pendingMutation++;
+  try {
+    await sbFetch('/meetings?id=eq.'+meetingId, {
+      method:'PATCH',
+      headers:{'Prefer':'return=minimal'},
+      body:JSON.stringify({summary:m.summary,key_issues:m.keyIssues,updated_at:new Date().toISOString()})
+    });
+    showToast('요약 수정됨 (DB 저장됨)','ok');
+  } catch(e) {
+    console.error('saveSummaryEdit DB error:',e);
+    showToast('요약 DB 저장 오류: '+e.message.slice(0,50),'err');
+  } finally {
+    pendingMutation--;
+  }
 }
 
 function closeSummaryEditModal(){
@@ -3556,20 +3616,16 @@ window.onload = async () => {
     document.getElementById('loginOverlay').style.display='flex';
   }
 
+  // 서버 변경을 주기적으로 받아오기만 한다. 과거에는 60초마다 로컬 전체
+  // 데이터를 saveToDB()로 다시 써서 다른 기기의 삭제/수정을 되돌릴 수 있었다.
+  // 명시적인 사용자 변경은 save() 또는 대상별 REST 요청이 즉시 저장한다.
   setInterval(async()=>{
-    if(pendingMutation===0){
-      // 멀티디바이스 stale-write 방지:
-      // 마지막 DB 읽기로부터 90초 이상 지났으면 다른 기기의 변경사항(삭제 등)을
-      // 반영한 뒤 저장한다. 구버전 데이터를 그냥 덮어쓰는 것을 막는다.
-      const stale = (Date.now() - lastLoadFromDbTime) > 90000;
-      if (stale) {
-        const ok = await loadFromDB();
-        if (ok) { renderAll(); renderNames(); }
-      }
-      await saveToDB();
+    if(pendingMutation===0 && document.visibilityState==='visible'){
+      const ok=await loadFromDB();
+      if(ok){renderCurrentTab(); if(currentTab==='residents')renderNames();}
     }
     updateSyncLabel();
-  }, 60000);
+  }, 15000);
   setInterval(updateSyncLabel, 10000);
 
   document.addEventListener('visibilitychange', async()=>{
