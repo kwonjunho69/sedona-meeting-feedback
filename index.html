@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-17-3';
+    var APP_VERSION = 'v2026-07-26-1';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -160,6 +160,9 @@ textarea{width:100%;resize:vertical;line-height:1.65}
 .fb-icon-btn{background:none;border:1px solid var(--g300);color:var(--g500);border-radius:6px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;font-weight:700;flex-shrink:0;transition:.15s;padding:0}
 .fb-icon-btn:hover{background:var(--primary-light);color:var(--primary);border-color:var(--primary)}
 .fb-icon-btn.hist-open{background:var(--primary-light);color:var(--primary);border-color:var(--primary)}
+.feedback-more-wrap{padding:8px 14px 12px;text-align:center}
+.feedback-more-btn{background:#fff;border:1.5px solid var(--primary);color:var(--primary);border-radius:20px;padding:6px 16px;font-size:12px;font-weight:700;cursor:pointer}
+.feedback-more-btn:hover{background:var(--primary-light)}
 
 /* 어르신별 팀 카드 좌측 컬러 */
 .fb-row.nursing-card{border-left:3px solid var(--nursing)}
@@ -198,8 +201,12 @@ textarea{width:100%;resize:vertical;line-height:1.65}
 .fbtn.d.active{background:var(--success);border-color:var(--success)}
 
 /* Name chips */
-.name-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:10px}
+.name-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px;margin-top:10px}
 .name-chip{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--primary-light);border-radius:8px;font-size:13px;font-weight:600;color:var(--primary)}
+.name-chip.discharged{background:var(--g100);color:var(--g500);border:1px dashed var(--g300)}
+.resident-state-btn{border:1px solid var(--g300);background:#fff;border-radius:12px;padding:2px 7px;font-size:10px;font-weight:700;cursor:pointer}
+.resident-state-btn.out{border-color:#f59e0b;color:#92400e;background:#fffbeb}
+.resident-state-btn.in{border-color:var(--success);color:#166534;background:#f0fdf4}
 .del-btn{cursor:pointer;color:var(--g400);font-size:16px;line-height:1}.del-btn:hover{color:var(--danger)}
 
 /* Chat */
@@ -311,6 +318,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   <div class="ntab" onclick="switchTab('welfare')">🤝 복지팀 <span class="nbadge" id="welfareBadge" style="display:none"></span></div>
   <div class="ntab" onclick="switchTab('input')">📝 상태 입력</div>
   <div class="ntab" onclick="switchTab('residents')">👥 어르신 명단</div>
+  <div class="ntab" onclick="switchTab('discharged')">🚪 퇴소 어르신 <span class="nbadge" id="dischargedBadge" style="display:none"></span></div>
   <div class="ntab" id="adminTab" onclick="switchTab('admin')" style="display:none">⚙️ 사용자 관리</div>
 </div>
 
@@ -499,7 +507,10 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 
 <!-- ══ TAB6: 명단 ══ -->
 <div class="tc" id="tab-residents">
-  <div class="info-box"><strong>📌 어르신 명단 등록:</strong> AI가 음성인식 오류 이름을 자동 교정합니다.</div>
+  <div class="info-box"><strong>📌 어르신 명단 등록:</strong> AI가 음성인식 오류 이름을 자동 교정합니다. 퇴소 처리한 어르신은 업무 조회에서 제외되고 `퇴소 어르신` 탭으로 이동합니다.</div>
+  <div id="residentSchemaWarning" class="info-box" style="display:none;background:#fff7ed;border-color:#fdba74;color:#9a3412">
+    ⚠️ 퇴소 관리 DB 컬럼이 아직 없습니다. 먼저 `supabase_migrations/2026-07-26_resident_discharge.sql`을 Supabase SQL Editor에서 실행하세요.
+  </div>
   <div class="panel">
     <div class="ptitle">👥 등록된 어르신 <span id="resCount" style="font-weight:400;color:var(--g500)"></span></div>
     <div class="row">
@@ -521,6 +532,19 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   <div class="panel">
     <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="clearNames()">🗑 전체 삭제</button>
   </div>
+</div>
+
+<!-- ══ TAB7: 퇴소 어르신 ══ -->
+<div class="tc" id="tab-discharged">
+  <div class="info-box" style="background:#fff7ed;border-color:#fdba74;color:#9a3412">
+    <strong>🚪 퇴소 어르신:</strong> 퇴소 처리된 어르신과 기존 피드백을 보관합니다. `재입소 처리`를 하면 일반 조회에 다시 표시됩니다.
+  </div>
+  <div class="fbar">
+    <input type="text" id="dischargedSearch" placeholder="🔍 이름 검색..." oninput="renderDischarged()"
+      style="margin-left:auto;width:160px;font-size:12px;padding:5px 10px">
+  </div>
+  <div id="dischargedEmpty" class="empty"><div class="ei">🚪</div><p>퇴소 처리된 어르신이 없습니다.</p></div>
+  <div id="dischargedList"></div>
 </div>
 </div>
 
@@ -825,11 +849,15 @@ let resviewFloorFilt = new Set(['all']);
 let datesFilt = 'all';
 let datesFloorFilt = new Set(['all']);
 let pendingNote = null; // { meetingId, feedbackId, type: 'done'|'add' }
+let expandedFeedbackLists = new Set(); // 화면별 어르신 피드백 더보기 상태
+let residentDischargeSchemaReady = false;
 
 // ── 어르신 명단 헬퍼 ──
 // residentNames = [{name:'홍길동', room:'101'}, ...] 또는 하위호환 string
 function resName(r){ return typeof r==='string'?r:(r.name||''); }
 function resRoom(r){ return typeof r==='string'?'':(r.room||''); }
+function resDischarged(r){ return typeof r==='object' && !!r.discharged; }
+function resDischargedAt(r){ return typeof r==='object' ? (r.dischargedAt||'') : ''; }
 function resFloor(r){ const rm=resRoom(r); return rm?rm.charAt(0):'?'; }
 function resDisplay(r){ const rm=resRoom(r); return resName(r)+(rm?' ('+rm+'호)':''); }
 function findResByName(name){
@@ -837,6 +865,36 @@ function findResByName(name){
   const n=name.trim();
   return residentNames.find(r=>resName(r).trim()===n)
     || residentNames.find(r=>resName(r).replace(/\s/g,'')===n.replace(/\s/g,''));
+}
+function isDischargedResident(name){
+  const resident=findResByName(name);
+  return !!resident && resDischarged(resident);
+}
+function activeResidents(){
+  return residentNames.filter(r=>!resDischarged(r));
+}
+function feedbackListKey(view,resident){ return view+'|'+resident; }
+function isFeedbackListExpanded(view,resident){
+  return expandedFeedbackLists.has(feedbackListKey(view,resident));
+}
+function toggleFeedbackMore(view,residentEnc){
+  const resident=decodeURIComponent(residentEnc);
+  const key=feedbackListKey(view,resident);
+  if(expandedFeedbackLists.has(key)) expandedFeedbackLists.delete(key);
+  else expandedFeedbackLists.add(key);
+  if(view==='resview') renderResview();
+  else if(view==='discharged') renderDischarged();
+  else renderTeam(view);
+}
+function feedbackMoreButton(view,resident,total,visible){
+  if(total<=4) return '';
+  const expanded=isFeedbackListExpanded(view,resident);
+  const hidden=total-visible;
+  return `<div class="feedback-more-wrap">
+    <button class="feedback-more-btn" onclick="toggleFeedbackMore('${view}','${encodeURIComponent(resident)}')">
+      ${expanded?'접기':'더보기 ('+hidden+'건)'}
+    </button>
+  </div>`;
 }
 
 // ── 처리 상태 헬퍼 (피드백별 다중이력) ──
@@ -899,18 +957,19 @@ function matchResidentName(inputName) {
   const clean = n => (n || '').replace(/\s+/g, '');
   const input = clean(inputName);
   if (!input) return { name: '미정', corrected: true, noMatch: true };
+  const matchableResidents=activeResidents();
 
   // 등록 명단 없으면 원본 유지
-  if (!residentNames.length) return { name: input, corrected: false };
+  if (!matchableResidents.length) return { name: input, corrected: false };
 
   // 1. 정확히 일치
-  for (const r of residentNames) {
+  for (const r of matchableResidents) {
     if (clean(resName(r)) === input) return { name: resName(r), corrected: false };
   }
 
   // 2. 유사도 점수: 동일 위치 글자 2점, 다른 위치에 존재 1점
   let best = null, bestScore = 0;
-  for (const r of residentNames) {
+  for (const r of matchableResidents) {
     const rn = clean(resName(r));
     const maxLen = Math.max(input.length, rn.length);
     let score = 0;
@@ -949,10 +1008,18 @@ function save() {
 async function syncResidentsToDB(){
   if (residentNames.length === 0) return;
   try {
+    const rows=residentNames.map(r=>{
+      const row={name:resName(r),room:resRoom(r)};
+      if(residentDischargeSchemaReady){
+        row.is_discharged=resDischarged(r);
+        row.discharged_at=resDischargedAt(r)||null;
+      }
+      return row;
+    });
     await sbFetch('/residents?on_conflict=name', {
       method:'POST',
       headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-      body: JSON.stringify(residentNames.map(r=>({name:resName(r),room:resRoom(r)})))
+      body: JSON.stringify(rows)
     });
   } catch(e) {
     console.error('syncResidentsToDB error:', e);
@@ -991,7 +1058,13 @@ function loadStorage() {
     users = u ? JSON.parse(u) : [...DEFAULT_USERS];
     if(!users.find(x=>x.id==='admin')) users.unshift(...DEFAULT_USERS); // admin 항상 유지
     // 구버전(string[]) → 신버전({name,room}[]) 마이그레이션
-    residentNames = residentNames.map(r=>typeof r==='string'?{name:r,room:''}:r);
+    residentNames = residentNames.map(r=>typeof r==='string'
+      ? {name:r,room:'',discharged:false,dischargedAt:''}
+      : {
+          ...r,
+          discharged:!!r.discharged,
+          dischargedAt:r.dischargedAt||''
+        });
   } catch(e) {}
 }
 
@@ -1264,7 +1337,15 @@ async function loadFromDB() {
       };
     });
 
-    residentNames = resData.map(r=>({name:r.name,room:r.room||''}));
+    residentDischargeSchemaReady = resData.length===0
+      ? residentDischargeSchemaReady
+      : resData.every(r=>Object.prototype.hasOwnProperty.call(r,'is_discharged'));
+    residentNames = resData.map(r=>({
+      name:r.name,
+      room:r.room||'',
+      discharged:!!r.is_discharged,
+      dischargedAt:r.discharged_at||''
+    }));
 
     if (usrData.length>0) {
       users = usrData;
@@ -1499,8 +1580,9 @@ async function runAI() {
 
   const MAX=80000;
   const inputText = text.length>MAX ? text.slice(0,MAX)+'\n...(이하 생략)' : text;
-  const namesCtx = residentNames.length>0
-    ? `\n\n[필수] 등록된 어르신 명단(${residentNames.length}명): ${residentNames.map(resName).join(', ')}\n반드시 이 명단을 참조하여 음성인식 오류로 잘못 적힌 이름을 정확히 교정하고 corrected:true 로 표시하세요. 명단에 없는 이름은 original_name에 원문을 보존하고 resident는 가장 유사한 명단 이름으로 교정하세요.` : '';
+  const currentResidents=activeResidents();
+  const namesCtx = currentResidents.length>0
+    ? `\n\n[필수] 현재 재실 어르신 명단(${currentResidents.length}명): ${currentResidents.map(resName).join(', ')}\n반드시 이 명단을 참조하여 음성인식 오류로 잘못 적힌 이름을 정확히 교정하고 corrected:true 로 표시하세요. 명단에 없는 이름은 original_name에 원문을 보존하고 resident는 가장 유사한 명단 이름으로 교정하세요.` : '';
 
   const sysPrompt = `당신은 노인요양원 케어 회의록을 분석하는 AI입니다. 반드시 아래 JSON 형식으로만 응답하세요. 마크다운 없이 순수 JSON만 출력하세요.
 
@@ -2141,8 +2223,10 @@ function getResidentFloor(name){
 function renderTeam(team) {
   const entries=[];
   meetings.forEach(m=>{
-    const match=f=>team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both');
-    const residents=[...new Set(m.feedbacks.filter(match).map(f=>f.resident))];
+    const match=f=>!isDischargedResident(f.resident) &&
+      (team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both'));
+    const residents=[...new Set(m.feedbacks.filter(match).map(f=>f.resident))]
+      .filter(res=>!isDischargedResident(res));
     residents.forEach(res=>{
       const fbs=m.feedbacks.filter(f=>f.resident===res&&match(f));
       const noteInfo=getGroupNote(m,res,team);
@@ -2213,6 +2297,10 @@ function renderTeam(team) {
       const pendCnt=totalFbCnt-doneFbCnt;
       const rm=getResidentRoom(res);
       const bodyId='tr-'+team+'-'+btoa(encodeURIComponent(res)).slice(0,10);
+      const allFeedbackRefs=eList.flatMap(e=>(e.fbs||[]).map(f=>({meeting:e.meeting,f})));
+      const expanded=isFeedbackListExpanded(team,res);
+      const visibleRefs=expanded?allFeedbackRefs:allFeedbackRefs.slice(0,4);
+      const visibleIds=new Set(visibleRefs.map(x=>x.f.id));
       return `<div class="team-res-card" style="margin-left:0">
         <div class="team-res-head" onclick="toggleTeamRes('${bodyId}')">
           <span style="font-size:18px">👤</span>
@@ -2225,15 +2313,18 @@ function renderTeam(team) {
         </div>
         <div class="team-res-body open" id="${bodyId}">
           ${eList.map(e=>{
+            const visibleFbs=(e.fbs||[]).filter(f=>visibleIds.has(f.id));
+            if(!visibleFbs.length)return '';
             return `<div class="team-date-row" style="flex-direction:column;align-items:stretch;gap:0;padding:0">
               <div style="display:flex;align-items:center;gap:8px;padding:8px 14px 4px">
                 <span class="team-date-tag">${e.meeting.date}</span>
               </div>
               <div class="fb-list" style="border-top:none">
-                ${e.fbs.map(f=>renderFbRowHtml(e.meeting,f)).join('')}
+                ${visibleFbs.map(f=>renderFbRowHtml(e.meeting,f)).join('')}
               </div>
             </div>`;
           }).join('')}
+          ${feedbackMoreButton(team,res,totalFbCnt,visibleRefs.length)}
         </div>
       </div>`;
     }).join('');
@@ -2299,7 +2390,8 @@ function setFilt(team, val, btn) {
 function markAllDone(team) {
   if (!confirm('모든 항목을 처리완료로 표시하시겠습니까?\n(처리 내용은 빈칸으로 저장됩니다)')) return;
   meetings.forEach(m=>{
-    const match=f=>team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both');
+    const match=f=>!isDischargedResident(f.resident) &&
+      (team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both'));
     const residents=[...new Set(m.feedbacks.filter(match).map(f=>f.resident))];
     residents.forEach(res=>{ if (!isGroupDone(m,res,team)) setStatus(m,res,team,true,''); });
   });
@@ -2319,7 +2411,8 @@ function markFloorDone(team, floor){
   let cnt=0;
   const toSave=[];
   meetings.forEach(m=>{
-    const match=f=>team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both');
+    const match=f=>!isDischargedResident(f.resident) &&
+      (team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both'));
     m.feedbacks.filter(match).forEach(f=>{
       if(getResidentFloor(f.resident)===floor && !getFbDone(m,f.id)){
         setFbStatus(m,f.id,true,{...logEntry});
@@ -2362,7 +2455,8 @@ function markResidentDone(resident){
 
 function exportTeam(team) {
   const teamName=team==='nursing'?'간호팀':'복지팀';
-  const match=f=>team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both');
+  const match=f=>!isDischargedResident(f.resident) &&
+    (team==='nursing'?(f.dept==='nursing'||f.dept==='both'):(f.dept==='welfare'||f.dept==='both'));
   let rows=[];
   meetings.forEach(m=>{
     const residents=[...new Set(m.feedbacks.filter(match).map(f=>f.resident))];
@@ -2434,8 +2528,9 @@ function renderResviewFloorCheckboxes() {
     makeLabel(fl, fl+'층', !allChecked && fset.has(fl));
   });
   // 호실 데이터 여부 체크 → 없으면 안내 표시
-  const hasRoom = residentNames.some(r => resRoom(r));
-  if (!hasRoom && residentNames.length > 0) {
+  const currentResidents=activeResidents();
+  const hasRoom = currentResidents.some(r => resRoom(r));
+  if (!hasRoom && currentResidents.length > 0) {
     const warn = document.createElement('span');
     warn.className = 'floor-warn';
     warn.style.cssText = 'font-size:11px;color:var(--warning);margin-left:6px';
@@ -2447,7 +2542,8 @@ function renderResviewFloorCheckboxes() {
 function renderResview() {
   const resMap = {};
   meetings.forEach(m => {
-    const residents = [...new Set(m.feedbacks.map(f=>f.resident))];
+    const residents = [...new Set(m.feedbacks.map(f=>f.resident))]
+      .filter(res=>!isDischargedResident(res));
     residents.forEach(res => {
       if (!resMap[res]) resMap[res] = [];
       resMap[res].push({ meeting: m, fbs: m.feedbacks.filter(f=>f.resident===res) });
@@ -2503,22 +2599,20 @@ function renderResview() {
     const entries=resMap[res];
     const bodyId='rv-'+btoa(encodeURIComponent(res)).slice(0,12);
     const allCorrected=entries.some(e=>e.fbs.some(f=>f.corrected));
+    const allFeedbackRefs=entries.flatMap(e=>(e.fbs||[]).map(f=>({meeting:e.meeting,f})));
+    const expanded=isFeedbackListExpanded('resview',res);
+    const visibleRefs=expanded?allFeedbackRefs:allFeedbackRefs.slice(0,4);
+    const visibleIds=new Set(visibleRefs.map(x=>x.f.id));
     const datesHtml=entries.map(({meeting,fbs})=>{
-      const nursFbs=fbs.filter(f=>f.dept==='nursing'||f.dept==='both');
-      const welfFbs=fbs.filter(f=>f.dept==='welfare'||f.dept==='both');
-      let inner='';
-      if (nursFbs.length) {
-        inner+=nursFbs.map(f=>{
-          const row=renderFbRowHtml(meeting,f);
-          return row.replace('class="fb-row','class="fb-row nursing-card');
-        }).join('');
-      }
-      if (welfFbs.length) {
-        inner+=welfFbs.map(f=>{
-          const row=renderFbRowHtml(meeting,f);
-          return row.replace('class="fb-row','class="fb-row welfare-card');
-        }).join('');
-      }
+      const visibleFbs=fbs.filter(f=>visibleIds.has(f.id));
+      if(!visibleFbs.length)return '';
+      const nursFbs=visibleFbs.filter(f=>f.dept==='nursing'||f.dept==='both');
+      const welfFbs=visibleFbs.filter(f=>f.dept==='welfare'||f.dept==='both');
+      const inner=visibleFbs.map(f=>{
+        const row=renderFbRowHtml(meeting,f);
+        const cardClass=f.dept==='welfare'?'welfare-card':'nursing-card';
+        return row.replace('class="fb-row',`class="fb-row ${cardClass}`);
+      }).join('');
       return `<div style="border-top:1px solid var(--g100);padding:10px 14px 6px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <span class="team-date-tag">${meeting.date}</span>
@@ -2544,7 +2638,10 @@ function renderResview() {
         </div>
         <span class="collapse-arrow open" id="arr-${bodyId}" style="margin-left:8px">▲</span>
       </div>
-      <div class="team-res-body open" id="${bodyId}">${datesHtml}</div>
+      <div class="team-res-body open" id="${bodyId}">
+        ${datesHtml}
+        ${feedbackMoreButton('resview',res,totalGroups,visibleRefs.length)}
+      </div>
     </div>`;
   }).join('');
 }
@@ -2570,10 +2667,10 @@ function getMeetingGroups(m) {
 
 function updateAllBadges() {
   const nursPend=meetings.reduce((acc,m)=>{
-    return acc+m.feedbacks.filter(f=>(f.dept==='nursing'||f.dept==='both')&&!getFbDone(m,f.id)).length;
+    return acc+m.feedbacks.filter(f=>!isDischargedResident(f.resident)&&(f.dept==='nursing'||f.dept==='both')&&!getFbDone(m,f.id)).length;
   },0);
   const welfPend=meetings.reduce((acc,m)=>{
-    return acc+m.feedbacks.filter(f=>(f.dept==='welfare'||f.dept==='both')&&!getFbDone(m,f.id)).length;
+    return acc+m.feedbacks.filter(f=>!isDischargedResident(f.resident)&&(f.dept==='welfare'||f.dept==='both')&&!getFbDone(m,f.id)).length;
   },0);
   const nb=document.getElementById('nursingBadge'), wb=document.getElementById('welfareBadge');
   nb.style.display=nursPend>0?'inline-block':'none'; nb.textContent=nursPend;
@@ -2581,10 +2678,13 @@ function updateAllBadges() {
   const totalPend=nursPend+welfPend;
   const rvb=document.getElementById('resviewBadge');
   rvb.style.display=totalPend>0?'inline-block':'none'; rvb.textContent=totalPend;
+  const dischargedCount=residentNames.filter(resDischarged).length;
+  const db=document.getElementById('dischargedBadge');
+  if(db){db.style.display=dischargedCount>0?'inline-block':'none';db.textContent=dischargedCount;}
 }
 
 function renderAll() {
-  renderDates(); renderTeam('nursing'); renderTeam('welfare'); renderResview(); updateAllBadges();
+  renderDates(); renderTeam('nursing'); renderTeam('welfare'); renderResview(); renderDischarged(); updateAllBadges();
 }
 function renderCurrentTab() {
   updateAllBadges();
@@ -2592,6 +2692,7 @@ function renderCurrentTab() {
   else if(currentTab==='nursing') renderTeam('nursing');
   else if(currentTab==='welfare') renderTeam('welfare');
   else if(currentTab==='resview') renderResview();
+  else if(currentTab==='discharged') renderDischarged();
   else { renderDates(); renderTeam('nursing'); renderTeam('welfare'); renderResview(); }
 }
 
@@ -2599,14 +2700,14 @@ function renderCurrentTab() {
 // 데이터를 직접 보여주는 탭들은 캐시된 로컬 상태가 아니라 항상 DB에서 새로
 // 읽어온 뒤 렌더링한다 (속도가 늦어도 정확성을 우선). 캐시는 오프라인 임시
 // 백업 용도로만 두고, 화면 표시의 기준으로 쓰지 않는다.
-const DB_BACKED_TABS = new Set(['dates','nursing','welfare','resview','residents']);
+const DB_BACKED_TABS = new Set(['dates','nursing','welfare','resview','residents','discharged']);
 
 async function switchTab(name) {
   currentTab = name;
   document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
-  const idx={resview:0,dates:1,nursing:2,welfare:3,input:4,residents:5,admin:6};
+  const idx={resview:0,dates:1,nursing:2,welfare:3,input:4,residents:5,discharged:6,admin:7};
   document.querySelectorAll('.ntab')[idx[name]].classList.add('active');
 
   if (DB_BACKED_TABS.has(name) && pendingMutation===0) {
@@ -2620,6 +2721,7 @@ async function switchTab(name) {
   else if(name==='welfare') renderTeam('welfare');
   else if(name==='resview') renderResview();
   else if(name==='residents') renderNames();
+  else if(name==='discharged') renderDischarged();
   else if(name==='admin') renderUserList();
   else if(name==='input') populateResEntryNameList();
 }
@@ -2648,7 +2750,8 @@ function showResNameSuggestions(){
   const box = document.getElementById('resEntryNameSuggest');
   if(!inp || !box) return;
   const val = inp.value.trim();
-  let list = val ? residentNames.filter(r=>resName(r).includes(val)) : residentNames;
+  const currentResidents=activeResidents();
+  let list = val ? currentResidents.filter(r=>resName(r).includes(val)) : currentResidents;
   list = list.slice(0, 8);
   if (list.length === 0) { box.style.display='none'; box.innerHTML=''; return; }
   box.innerHTML = list.map(r=>{
@@ -2737,24 +2840,139 @@ function clearResidentEntry(){
 
 // ── NAMES ──
 function renderNames(){
-  document.getElementById('resCount').textContent=`(${residentNames.length}명)`;
+  const dischargedCount=residentNames.filter(resDischarged).length;
+  const activeCount=residentNames.length-dischargedCount;
+  document.getElementById('resCount').textContent=`(재실 ${activeCount}명 · 퇴소 ${dischargedCount}명)`;
+  const schemaWarning=document.getElementById('residentSchemaWarning');
+  if(schemaWarning) schemaWarning.style.display=residentDischargeSchemaReady?'none':'block';
   const g=document.getElementById('nameGrid');
   const sorted=[...residentNames].map((r,i)=>({r,i})).sort((a,b)=>{
+    if(resDischarged(a.r)!==resDischarged(b.r))return resDischarged(a.r)?1:-1;
     const fa=resFloor(a.r),fb=resFloor(b.r);
     if(fa!==fb)return fa.localeCompare(fb);
     return resRoom(a.r).localeCompare(resRoom(b.r))||resName(a.r).localeCompare(resName(b.r));
   });
   g.innerHTML=sorted.length?sorted.map(({r,i})=>{
-    const nm=resName(r),rm=resRoom(r);
-    return `<div class="name-chip" style="flex-direction:column;align-items:flex-start;gap:2px"><div style="display:flex;justify-content:space-between;width:100%"><span style="font-weight:700">${nm}</span><span class="del-btn" onclick="delName(${i})">×</span></div>${rm?`<span style="font-size:11px;color:var(--primary)">${rm}호</span>`:''}</div>`;
+    const nm=resName(r),rm=resRoom(r),isOut=resDischarged(r);
+    return `<div class="name-chip ${isOut?'discharged':''}" style="flex-direction:column;align-items:flex-start;gap:5px">
+      <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
+        <span style="font-weight:700">${esc(nm)}</span>
+        <span class="del-btn" onclick="delName(${i})" title="명단에서 완전 삭제">×</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;gap:4px">
+        <span style="font-size:11px">${rm?esc(rm)+'호':'호실 미지정'}</span>
+        <button class="resident-state-btn ${isOut?'in':'out'}" onclick="toggleResidentDischarge(${i})">
+          ${isOut?'↩ 재입소':'🚪 퇴소'}
+        </button>
+      </div>
+      ${isOut&&resDischargedAt(r)?`<span style="font-size:10px;color:var(--g400)">퇴소일 ${esc(resDischargedAt(r))}</span>`:''}
+    </div>`;
   }).join(''):'<div style="color:var(--g400);font-size:12px;padding:6px">등록된 어르신이 없습니다.</div>';
+}
+async function toggleResidentDischarge(i){
+  if(!currentUser){showToast('로그인 후 이용하세요','err');return;}
+  if(!residentDischargeSchemaReady){
+    showToast('먼저 Supabase 퇴소 관리 SQL을 실행해주세요.','err');
+    const warning=document.getElementById('residentSchemaWarning');
+    if(warning)warning.style.display='block';
+    return;
+  }
+  const resident=residentNames[i];
+  if(!resident)return;
+  const next=!resDischarged(resident);
+  const action=next?'퇴소':'재입소';
+  if(!confirm(`${resName(resident)} 어르신을 ${action} 처리하시겠습니까?`))return;
+
+  const previous={discharged:resDischarged(resident),dischargedAt:resDischargedAt(resident)};
+  resident.discharged=next;
+  resident.dischargedAt=next?new Date().toISOString().slice(0,10):'';
+  localStorage.setItem('sd_names',JSON.stringify(residentNames));
+  renderNames();renderAll();renderDischarged();
+  showToast(`${action} 저장 중...`);
+
+  pendingMutation++;
+  try{
+    const name=encodeURIComponent(resName(resident));
+    await sbFetch('/residents?name=eq.'+name,{
+      method:'PATCH',
+      headers:{'Prefer':'return=minimal'},
+      body:JSON.stringify({
+        is_discharged:next,
+        discharged_at:resident.dischargedAt||null
+      })
+    });
+    const verify=await sbFetch('/residents?name=eq.'+name+'&select=is_discharged,discharged_at');
+    if(!verify||verify.length!==1||!!verify[0].is_discharged!==next){
+      throw new Error('DB 상태 확인 실패');
+    }
+    showToast(`${resName(resident)} 어르신 ${action} 처리 완료`,'ok');
+  }catch(e){
+    resident.discharged=previous.discharged;
+    resident.dischargedAt=previous.dischargedAt;
+    localStorage.setItem('sd_names',JSON.stringify(residentNames));
+    renderNames();renderAll();renderDischarged();
+    showToast(`${action} 처리 실패: ${e.message.slice(0,45)}`,'err');
+  }finally{
+    pendingMutation--;
+  }
+}
+
+function renderDischarged(){
+  const search=(document.getElementById('dischargedSearch')?.value||'').trim();
+  let discharged=residentNames.filter(resDischarged);
+  if(search)discharged=discharged.filter(r=>resName(r).includes(search));
+  discharged.sort((a,b)=>
+    resDischargedAt(b).localeCompare(resDischargedAt(a))||
+    resName(a).localeCompare(resName(b))
+  );
+
+  const empty=document.getElementById('dischargedEmpty');
+  const list=document.getElementById('dischargedList');
+  if(!empty||!list)return;
+  empty.style.display=discharged.length?'none':'block';
+  if(!discharged.length){list.innerHTML='';return;}
+
+  list.innerHTML=discharged.map(r=>{
+    const name=resName(r);
+    const allRefs=meetings.flatMap(m=>
+      (m.feedbacks||[])
+        .filter(f=>{
+          const matched=findResByName(f.resident);
+          return matched&&resName(matched)===name;
+        })
+        .map(f=>({meeting:m,f}))
+    );
+    const expanded=isFeedbackListExpanded('discharged',name);
+    const visible=expanded?allRefs:allRefs.slice(0,4);
+    const feedbackHtml=visible.length
+      ? visible.map(({meeting,f})=>`
+          <div class="team-date-row" style="align-items:stretch">
+            <span class="team-date-tag">${esc(meeting.date)}</span>
+            <div class="fb-list" style="flex:1">${renderFbRowHtml(meeting,f)}</div>
+          </div>`).join('')
+      : '<div style="padding:14px;color:var(--g400);font-size:12px">저장된 피드백이 없습니다.</div>';
+    return `<div class="team-res-card">
+      <div class="team-res-head">
+        <span style="font-size:18px">🚪</span>
+        <span class="team-res-name">${esc(name)}</span>
+        ${resRoom(r)?`<span class="room-badge">${esc(resRoom(r))}호</span>`:''}
+        <span style="font-size:11px;color:var(--g500)">퇴소일 ${esc(resDischargedAt(r)||'미입력')}</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--g500)">피드백 ${allRefs.length}건</span>
+        <button class="resident-state-btn in" onclick="toggleResidentDischarge(${residentNames.indexOf(r)})">↩ 재입소 처리</button>
+      </div>
+      <div class="team-res-body open">
+        ${feedbackHtml}
+        ${feedbackMoreButton('discharged',name,allRefs.length,visible.length)}
+      </div>
+    </div>`;
+  }).join('');
 }
 function addName(){
   const inp=document.getElementById('newName'), n=inp.value.trim();
   const ri=document.getElementById('newRoom'), rm=ri?ri.value.trim():'';
   if(!n)return;
   if(residentNames.some(r=>resName(r)===n)){showToast('이미 등록됨','err');return;}
-  residentNames.push({name:n,room:rm});
+  residentNames.push({name:n,room:rm,discharged:false,dischargedAt:''});
   save();renderNames();inp.value='';if(ri)ri.value='';showToast(`${n} 추가됨`);
   syncResidentsToDB();
 }
@@ -2765,7 +2983,7 @@ function addBulk(){
   lines.forEach(l=>{
     const parts=l.split(/\s+/), n=parts[0], rm=parts[1]||'';
     if(!n)return;
-    if(!residentNames.some(r=>resName(r)===n)){residentNames.push({name:n,room:rm});added++;}
+    if(!residentNames.some(r=>resName(r)===n)){residentNames.push({name:n,room:rm,discharged:false,dischargedAt:''});added++;}
   });
   save();renderNames();document.getElementById('bulkNames').value='';showToast(`${added}명 추가됨`);
   syncResidentsToDB();
@@ -2799,7 +3017,7 @@ function loadNameFile(e){
     lines.forEach(l=>{
       const parts=l.split(/\s+/),n=parts[0],rm=parts[1]||'';
       if(!n)return;
-      if(!residentNames.some(r=>resName(r)===n)){residentNames.push({name:n,room:rm});added++;}
+      if(!residentNames.some(r=>resName(r)===n)){residentNames.push({name:n,room:rm,discharged:false,dischargedAt:''});added++;}
     });
     save();renderNames();showToast(`${added}명 추가됨`,'ok');
     syncResidentsToDB();
@@ -3035,10 +3253,11 @@ async function bulkReanalyze(overwriteAll) {
 
     const MAX = 80000;
     const inputText = m.rawText.length > MAX ? m.rawText.slice(0, MAX) + '\n...(이하 생략)' : m.rawText;
-    const namesCtx = residentNames.length > 0
+    const currentResidents=activeResidents();
+    const namesCtx = currentResidents.length > 0
       ? `
 
-[필수] 등록된 어르신 명단(${residentNames.length}명): ${residentNames.map(resName).join(', ')}
+[필수] 현재 재실 어르신 명단(${currentResidents.length}명): ${currentResidents.map(resName).join(', ')}
 반드시 이 명단을 참조하여 음성인식 오류로 잘못 적힌 이름을 정확히 교정하고 corrected:true로 표시하세요.`
       : '';
     const fullPrompt = sysPrompt + namesCtx;
@@ -3243,7 +3462,7 @@ function openAddFbModal(meetingId) {
 
   // 어르신 목록 갱신
   const dl = document.getElementById('addFbResidentList');
-  if (dl) dl.innerHTML = residentNames.map(r => `<option value="${resName(r)}">`).join('');
+  if (dl) dl.innerHTML = activeResidents().map(r => `<option value="${esc(resName(r))}">`).join('');
 
   document.getElementById('addFbMeetingDate').textContent = '📅 ' + m.date + ' 회의록';
   document.getElementById('addFbResident').value = '';
@@ -3330,7 +3549,7 @@ function openFeedbackEdit(meetingId, feedbackId){
   editTarget = {meetingId, feedbackId};
 
   const dl = document.getElementById('residentDatalist');
-  if(dl) dl.innerHTML = residentNames.map(r=>`<option value="${resName(r)}">`).join('');
+  if(dl) dl.innerHTML = activeResidents().map(r=>`<option value="${esc(resName(r))}">`).join('');
 
   document.getElementById('fbEditResident').value = f.resident;
   document.getElementById('fbEditDept').value = f.dept || 'nursing';
