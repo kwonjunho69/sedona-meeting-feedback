@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-26-1';
+    var APP_VERSION = 'v2026-07-26-2';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -204,6 +204,8 @@ textarea{width:100%;resize:vertical;line-height:1.65}
 .name-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px;margin-top:10px}
 .name-chip{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--primary-light);border-radius:8px;font-size:13px;font-weight:600;color:var(--primary)}
 .name-chip.discharged{background:var(--g100);color:var(--g500);border:1px dashed var(--g300)}
+.room-edit-btn{border:1px solid var(--g300);background:#fff;color:var(--g600);border-radius:6px;padding:2px 6px;font-size:10px;font-weight:700;cursor:pointer}
+.room-edit-btn:hover{border-color:var(--primary);color:var(--primary)}
 .resident-state-btn{border:1px solid var(--g300);background:#fff;border-radius:12px;padding:2px 7px;font-size:10px;font-weight:700;cursor:pointer}
 .resident-state-btn.out{border-color:#f59e0b;color:#92400e;background:#fffbeb}
 .resident-state-btn.in{border-color:var(--success);color:#166534;background:#f0fdf4}
@@ -515,7 +517,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
     <div class="ptitle">👥 등록된 어르신 <span id="resCount" style="font-weight:400;color:var(--g500)"></span></div>
     <div class="row">
       <input type="text" id="newName" placeholder="성함" maxlength="10" style="flex:2" onkeydown="if(event.key==='Enter')addName()">
-      <input type="text" id="newRoom" placeholder="호실 (예: 101)" maxlength="6" style="flex:1" onkeydown="if(event.key==='Enter')addName()">
+      <input type="text" id="newRoom" placeholder="호실 (예: 201호(2인))" maxlength="30" style="flex:1" onkeydown="if(event.key==='Enter')addName()">
       <button class="btn btn-primary btn-sm" onclick="addName()">➕ 추가</button>
     </div>
     <textarea id="bulkNames" style="margin-top:8px;min-height:70px" placeholder="일괄 추가 — 한 줄에 한 명 (이름 호실 순)&#10;홍길동 101&#10;박순자 205&#10;김영희 310"></textarea>
@@ -856,10 +858,14 @@ let residentDischargeSchemaReady = false;
 // residentNames = [{name:'홍길동', room:'101'}, ...] 또는 하위호환 string
 function resName(r){ return typeof r==='string'?r:(r.name||''); }
 function resRoom(r){ return typeof r==='string'?'':(r.room||''); }
+function roomDisplay(room){
+  const rm=String(room||'').trim();
+  return rm ? (rm.includes('호')?rm:rm+'호') : '';
+}
 function resDischarged(r){ return typeof r==='object' && !!r.discharged; }
 function resDischargedAt(r){ return typeof r==='object' ? (r.dischargedAt||'') : ''; }
 function resFloor(r){ const rm=resRoom(r); return rm?rm.charAt(0):'?'; }
-function resDisplay(r){ const rm=resRoom(r); return resName(r)+(rm?' ('+rm+'호)':''); }
+function resDisplay(r){ const rm=roomDisplay(resRoom(r)); return resName(r)+(rm?' ('+rm+')':''); }
 function findResByName(name){
   if(!name) return null;
   const n=name.trim();
@@ -2001,7 +2007,7 @@ function renderMeetingResidents(m, searchVal='', floorFiltSet=null) {
         <div class="res-group-header">
           <span style="font-size:16px">${isUnmatched ? '❓' : '👤'}</span>
           <span class="res-group-name" style="${isUnmatched ? 'color:#b45309' : ''}">${esc(res)}</span>
-          ${rm ? `<span style="font-size:11px;background:var(--g200);color:var(--g600);padding:1px 7px;border-radius:10px;font-weight:600">${rm}호</span>` : ''}
+          ${rm ? `<span style="font-size:11px;background:var(--g200);color:var(--g600);padding:1px 7px;border-radius:10px;font-weight:600">${esc(roomDisplay(rm))}</span>` : ''}
           ${hasHigh ? `<span style="font-size:11px;background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:10px;font-weight:700">🚨 즉시처리</span>` : ''}
           ${corrected ? `<span class="corrected-badge">🔄 교정</span>` : ''}
         </div>
@@ -2305,7 +2311,7 @@ function renderTeam(team) {
         <div class="team-res-head" onclick="toggleTeamRes('${bodyId}')">
           <span style="font-size:18px">👤</span>
           <span class="team-res-name">${esc(res)}</span>
-          ${rm?`<span class="room-badge">${rm}호</span>`:''}
+          ${rm?`<span class="room-badge">${esc(roomDisplay(rm))}</span>`:''}
           <span style="font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;${pendCnt>0?'background:var(--danger-light);color:var(--danger)':'background:var(--success-light);color:var(--success)'}">
             ${pendCnt>0?`미처리 ${pendCnt}건`:`${totalFbCnt}건 완료`}
           </span>
@@ -2627,7 +2633,7 @@ function renderResview() {
       <div class="team-res-head" onclick="toggleTeamRes('${bodyId}')">
         <span style="font-size:18px">👤</span>
         <span class="team-res-name">${esc(res)}</span>
-        ${(()=>{const rm=getResidentRoom(res);return rm?`<span class="room-badge">${rm}호</span>`:''})()}
+        ${(()=>{const rm=getResidentRoom(res);return rm?`<span class="room-badge">${esc(roomDisplay(rm))}</span>`:''})()}
         ${allCorrected?`<span class="corrected-badge">🔄 이름교정</span>`:''}
         <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
           ${pendGroups>0
@@ -2759,7 +2765,7 @@ function showResNameSuggestions(){
     const safe = nm.replace(/'/g,"\\'");
     return `<div onclick="selectResNameSuggestion('${safe}')"
       style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--g100)">
-      ${esc(nm)}${rm?` <span style="color:var(--g400);font-size:11px">(${esc(rm)}호)</span>`:''}
+      ${esc(nm)}${rm?` <span style="color:var(--g400);font-size:11px">(${esc(roomDisplay(rm))})</span>`:''}
     </div>`;
   }).join('');
   box.style.display='block';
@@ -2859,8 +2865,9 @@ function renderNames(){
         <span style="font-weight:700">${esc(nm)}</span>
         <span class="del-btn" onclick="delName(${i})" title="명단에서 완전 삭제">×</span>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;gap:4px">
-        <span style="font-size:11px">${rm?esc(rm)+'호':'호실 미지정'}</span>
+      <div style="display:flex;align-items:center;width:100%;gap:4px">
+        <span style="font-size:11px;overflow-wrap:anywhere">${rm?esc(roomDisplay(rm)):'호실 미지정'}</span>
+        <button class="room-edit-btn" onclick="editResidentRoom(${i})">✏️ 호실</button>
         <button class="resident-state-btn ${isOut?'in':'out'}" onclick="toggleResidentDischarge(${i})">
           ${isOut?'↩ 재입소':'🚪 퇴소'}
         </button>
@@ -2868,6 +2875,42 @@ function renderNames(){
       ${isOut&&resDischargedAt(r)?`<span style="font-size:10px;color:var(--g400)">퇴소일 ${esc(resDischargedAt(r))}</span>`:''}
     </div>`;
   }).join(''):'<div style="color:var(--g400);font-size:12px;padding:6px">등록된 어르신이 없습니다.</div>';
+}
+async function editResidentRoom(i){
+  if(!currentUser){showToast('로그인 후 이용하세요','err');return;}
+  const resident=residentNames[i];
+  if(!resident)return;
+  const entered=prompt(`${resName(resident)} 어르신의 호실을 입력하세요.`,resRoom(resident));
+  if(entered===null)return;
+  const nextRoom=entered.trim();
+  if(nextRoom.length>30){showToast('호실은 최대 30자까지 입력할 수 있습니다.','err');return;}
+  const previousRoom=resRoom(resident);
+  if(nextRoom===previousRoom)return;
+
+  resident.room=nextRoom;
+  localStorage.setItem('sd_names',JSON.stringify(residentNames));
+  renderNames();renderAll();
+  pendingMutation++;
+  try{
+    const name=encodeURIComponent(resName(resident));
+    await sbFetch('/residents?name=eq.'+name,{
+      method:'PATCH',
+      headers:{'Prefer':'return=minimal'},
+      body:JSON.stringify({room:nextRoom})
+    });
+    const verify=await sbFetch('/residents?name=eq.'+name+'&select=room');
+    if(!verify||verify.length!==1||(verify[0].room||'')!==nextRoom){
+      throw new Error('DB 상태 확인 실패');
+    }
+    showToast(`${resName(resident)} 어르신 호실 수정 완료`,'ok');
+  }catch(e){
+    resident.room=previousRoom;
+    localStorage.setItem('sd_names',JSON.stringify(residentNames));
+    renderNames();renderAll();
+    showToast('호실 수정 실패: '+e.message.slice(0,45),'err');
+  }finally{
+    pendingMutation--;
+  }
 }
 async function toggleResidentDischarge(i){
   if(!currentUser){showToast('로그인 후 이용하세요','err');return;}
@@ -2955,7 +2998,7 @@ function renderDischarged(){
       <div class="team-res-head">
         <span style="font-size:18px">🚪</span>
         <span class="team-res-name">${esc(name)}</span>
-        ${resRoom(r)?`<span class="room-badge">${esc(resRoom(r))}호</span>`:''}
+        ${resRoom(r)?`<span class="room-badge">${esc(roomDisplay(resRoom(r)))}</span>`:''}
         <span style="font-size:11px;color:var(--g500)">퇴소일 ${esc(resDischargedAt(r)||'미입력')}</span>
         <span style="margin-left:auto;font-size:12px;color:var(--g500)">피드백 ${allRefs.length}건</span>
         <button class="resident-state-btn in" onclick="toggleResidentDischarge(${residentNames.indexOf(r)})">↩ 재입소 처리</button>
