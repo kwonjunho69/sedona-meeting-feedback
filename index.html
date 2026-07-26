@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-26-3';
+    var APP_VERSION = 'v2026-07-26-4';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -851,7 +851,7 @@ let resviewFloorFilt = new Set(['all']);
 let datesFilt = 'all';
 let datesFloorFilt = new Set(['all']);
 let pendingNote = null; // { meetingId, feedbackId, type: 'done'|'add' }
-let expandedFeedbackLists = new Set(); // 화면별 어르신 피드백 더보기 상태
+let feedbackVisibleLimits = new Map(); // 화면별 어르신 피드백 표시 건수(4건씩 증가)
 let residentDischargeSchemaReady = false;
 
 // ── 어르신 명단 헬퍼 ──
@@ -880,25 +880,24 @@ function activeResidents(){
   return residentNames.filter(r=>!resDischarged(r));
 }
 function feedbackListKey(view,resident){ return view+'|'+resident; }
-function isFeedbackListExpanded(view,resident){
-  return expandedFeedbackLists.has(feedbackListKey(view,resident));
+function feedbackVisibleLimit(view,resident,total){
+  return Math.min(feedbackVisibleLimits.get(feedbackListKey(view,resident))||4,total);
 }
 function toggleFeedbackMore(view,residentEnc){
   const resident=decodeURIComponent(residentEnc);
   const key=feedbackListKey(view,resident);
-  if(expandedFeedbackLists.has(key)) expandedFeedbackLists.delete(key);
-  else expandedFeedbackLists.add(key);
+  feedbackVisibleLimits.set(key,(feedbackVisibleLimits.get(key)||4)+4);
   if(view==='resview') renderResview();
   else if(view==='discharged') renderDischarged();
   else renderTeam(view);
 }
 function feedbackMoreButton(view,resident,total,visible){
-  if(total<=4) return '';
-  const expanded=isFeedbackListExpanded(view,resident);
+  if(visible>=total) return '';
   const hidden=total-visible;
+  const next=Math.min(4,hidden);
   return `<div class="feedback-more-wrap">
     <button class="feedback-more-btn" onclick="toggleFeedbackMore('${view}','${encodeURIComponent(resident)}')">
-      ${expanded?'접기':'더보기 ('+hidden+'건)'}
+      더보기 (+${next}건 · 남은 ${hidden}건)
     </button>
   </div>`;
 }
@@ -2304,8 +2303,7 @@ function renderTeam(team) {
       const rm=getResidentRoom(res);
       const bodyId='tr-'+team+'-'+btoa(encodeURIComponent(res)).slice(0,10);
       const allFeedbackRefs=eList.flatMap(e=>(e.fbs||[]).map(f=>({meeting:e.meeting,f})));
-      const expanded=isFeedbackListExpanded(team,res);
-      const visibleRefs=expanded?allFeedbackRefs:allFeedbackRefs.slice(0,4);
+      const visibleRefs=allFeedbackRefs.slice(0,feedbackVisibleLimit(team,res,allFeedbackRefs.length));
       const visibleIds=new Set(visibleRefs.map(x=>x.f.id));
       return `<div class="team-res-card" style="margin-left:0">
         <div class="team-res-head" onclick="toggleTeamRes('${bodyId}')">
@@ -2606,8 +2604,7 @@ function renderResview() {
     const bodyId='rv-'+btoa(encodeURIComponent(res)).slice(0,12);
     const allCorrected=entries.some(e=>e.fbs.some(f=>f.corrected));
     const allFeedbackRefs=entries.flatMap(e=>(e.fbs||[]).map(f=>({meeting:e.meeting,f})));
-    const expanded=isFeedbackListExpanded('resview',res);
-    const visibleRefs=expanded?allFeedbackRefs:allFeedbackRefs.slice(0,4);
+    const visibleRefs=allFeedbackRefs.slice(0,feedbackVisibleLimit('resview',res,allFeedbackRefs.length));
     const visibleIds=new Set(visibleRefs.map(x=>x.f.id));
     const datesHtml=entries.map(({meeting,fbs})=>{
       const visibleFbs=fbs.filter(f=>visibleIds.has(f.id));
@@ -2982,8 +2979,7 @@ function renderDischarged(){
         })
         .map(f=>({meeting:m,f}))
     );
-    const expanded=isFeedbackListExpanded('discharged',name);
-    const visible=expanded?allRefs:allRefs.slice(0,4);
+    const visible=allRefs.slice(0,feedbackVisibleLimit('discharged',name,allRefs.length));
     const feedbackHtml=visible.length
       ? visible.map(({meeting,f})=>`
           <div class="team-date-row" style="align-items:stretch">
