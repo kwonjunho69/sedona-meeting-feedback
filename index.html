@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-26-2';
+    var APP_VERSION = 'v2026-07-26-3';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -320,7 +320,7 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
   <div class="ntab" onclick="switchTab('welfare')">🤝 복지팀 <span class="nbadge" id="welfareBadge" style="display:none"></span></div>
   <div class="ntab" onclick="switchTab('input')">📝 상태 입력</div>
   <div class="ntab" onclick="switchTab('residents')">👥 어르신 명단</div>
-  <div class="ntab" onclick="switchTab('discharged')">🚪 퇴소 어르신 <span class="nbadge" id="dischargedBadge" style="display:none"></span></div>
+  <div class="ntab" onclick="switchTab('discharged')">🚪 퇴소 어르신</div>
   <div class="ntab" id="adminTab" onclick="switchTab('admin')" style="display:none">⚙️ 사용자 관리</div>
 </div>
 
@@ -2684,9 +2684,6 @@ function updateAllBadges() {
   const totalPend=nursPend+welfPend;
   const rvb=document.getElementById('resviewBadge');
   rvb.style.display=totalPend>0?'inline-block':'none'; rvb.textContent=totalPend;
-  const dischargedCount=residentNames.filter(resDischarged).length;
-  const db=document.getElementById('dischargedBadge');
-  if(db){db.style.display=dischargedCount>0?'inline-block':'none';db.textContent=dischargedCount;}
 }
 
 function renderAll() {
