@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-26-4';
+    var APP_VERSION = 'v2026-07-31-1';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -160,9 +160,11 @@ textarea{width:100%;resize:vertical;line-height:1.65}
 .fb-icon-btn{background:none;border:1px solid var(--g300);color:var(--g500);border-radius:6px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;font-weight:700;flex-shrink:0;transition:.15s;padding:0}
 .fb-icon-btn:hover{background:var(--primary-light);color:var(--primary);border-color:var(--primary)}
 .fb-icon-btn.hist-open{background:var(--primary-light);color:var(--primary);border-color:var(--primary)}
-.feedback-more-wrap{padding:8px 14px 12px;text-align:center}
+.feedback-more-wrap{padding:8px 14px 12px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
 .feedback-more-btn{background:#fff;border:1.5px solid var(--primary);color:var(--primary);border-radius:20px;padding:6px 16px;font-size:12px;font-weight:700;cursor:pointer}
 .feedback-more-btn:hover{background:var(--primary-light)}
+.feedback-less-btn{background:#fff;border:1.5px solid var(--g400);color:var(--g600);border-radius:20px;padding:6px 16px;font-size:12px;font-weight:700;cursor:pointer}
+.feedback-less-btn:hover{background:var(--g100)}
 
 /* 어르신별 팀 카드 좌측 컬러 */
 .fb-row.nursing-card{border-left:3px solid var(--nursing)}
@@ -883,22 +885,37 @@ function feedbackListKey(view,resident){ return view+'|'+resident; }
 function feedbackVisibleLimit(view,resident,total){
   return Math.min(feedbackVisibleLimits.get(feedbackListKey(view,resident))||4,total);
 }
-function toggleFeedbackMore(view,residentEnc){
-  const resident=decodeURIComponent(residentEnc);
-  const key=feedbackListKey(view,resident);
-  feedbackVisibleLimits.set(key,(feedbackVisibleLimits.get(key)||4)+4);
+function renderFeedbackListView(view){
   if(view==='resview') renderResview();
   else if(view==='discharged') renderDischarged();
   else renderTeam(view);
 }
+function toggleFeedbackMore(view,residentEnc,visible,total){
+  const resident=decodeURIComponent(residentEnc);
+  const key=feedbackListKey(view,resident);
+  feedbackVisibleLimits.set(key,Math.min(Number(total),Number(visible)+4));
+  renderFeedbackListView(view);
+}
+function toggleFeedbackLess(view,residentEnc,visible){
+  const resident=decodeURIComponent(residentEnc);
+  const key=feedbackListKey(view,resident);
+  const shown=Number(visible);
+  const collapseCount=shown%4||4;
+  feedbackVisibleLimits.set(key,Math.max(4,shown-collapseCount));
+  renderFeedbackListView(view);
+}
 function feedbackMoreButton(view,resident,total,visible){
-  if(visible>=total) return '';
+  if(total<=4) return '';
   const hidden=total-visible;
   const next=Math.min(4,hidden);
+  const collapseCount=visible%4||4;
   return `<div class="feedback-more-wrap">
-    <button class="feedback-more-btn" onclick="toggleFeedbackMore('${view}','${encodeURIComponent(resident)}')">
+    ${visible>4?`<button class="feedback-less-btn" onclick="toggleFeedbackLess('${view}','${encodeURIComponent(resident)}',${visible})">
+      접기 (-${collapseCount}건)
+    </button>`:''}
+    ${hidden>0?`<button class="feedback-more-btn" onclick="toggleFeedbackMore('${view}','${encodeURIComponent(resident)}',${visible},${total})">
       더보기 (+${next}건 · 남은 ${hidden}건)
-    </button>
+    </button>`:''}
   </div>`;
 }
 
