@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-07-31-1';
+    var APP_VERSION = 'v2026-09-04-1';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -812,6 +812,10 @@ let lastSyncTime = null;
 let lastLoadFromDbTime = 0; // DB에서 마지막으로 읽은 시각 (ms) — 멀티디바이스 stale-write 방지용
 let dbSaveQueue = Promise.resolve(); // 여러 저장 요청을 직렬화해 이전 저장이 최신 상태를 덮지 않게 함
 let dbLoadGeneration = 0; // 동시에 시작된 조회 중 가장 최신 응답만 화면에 적용
+let dbLoadPromise = null; // focus/탭 전환 등이 겹쳐도 전체 DB 조회는 한 번만 실행
+let dbServiceRestricted = false; // Supabase 사용량 제한 중에는 자동 재시도 중지
+const DB_AUTO_REFRESH_MS = 5 * 60 * 1000;
+const DB_STALE_MS = 5 * 60 * 1000;
 let openMeetingIds = new Set(); // 열린 회의록 카드 추적
 // 어르신 개별 입력으로 생성된 피드백 ID 집합 (localStorage 영속, DB 스키마 변경 불필요)
 // DB reload 후에도 source='individual' 복원에 사용
@@ -1110,8 +1114,14 @@ async function sbFetch(path, opts={}) {
     }
   });
   if (!r.ok) {
-    const err = await r.text();
-    throw new Error('Supabase ' + r.status + ': ' + err.slice(0,100));
+    const body = await r.text();
+    let serverMessage=body;
+    try { serverMessage=JSON.parse(body).message||body; } catch(e) {}
+    const error=new Error('Supabase ' + r.status + ': ' + serverMessage);
+    error.status=r.status;
+    error.serverMessage=serverMessage;
+    error.code=serverMessage.includes('exceed_egress_quota')?'exceed_egress_quota':'';
+    throw error;
   }
   if (r.status === 204) return null;
   const text = await r.text();
@@ -1281,14 +1291,30 @@ async function saveToDB() {
     updateSyncLabel();
   } catch(e) {
     console.error('saveToDB error:', e);
+    dbServiceRestricted = !!(e&&(e.code==='exceed_egress_quota'||e.status===402));
+    lastDbError = friendlyDbError(e);
     setDbDot('err');
     document.getElementById('syncIcon').textContent = '❌';
-    showToast('⚠️ DB 저장 오류: ' + (e&&e.message?e.message.slice(0,60):String(e)), 'err');
-    setTimeout(()=>save(), 15000);
+    setDbStatus('❌ '+lastDbError);
+    showToast('⚠️ DB 저장 오류: '+lastDbError, 'err');
   }
 }
 
+function friendlyDbError(e){
+  if(e&&(e.code==='exceed_egress_quota'||(e.status===402&&String(e.serverMessage||e.message).includes('egress')))){
+    return 'Supabase 전송량 한도 초과로 서버가 일시 제한되었습니다. 관리자에게 요금제/사용량 확인을 요청하세요.';
+  }
+  return e&&e.message?e.message:String(e);
+}
+
 async function loadFromDB() {
+  if(dbLoadPromise)return dbLoadPromise;
+  dbLoadPromise=loadFromDBInternal();
+  try{return await dbLoadPromise;}
+  finally{dbLoadPromise=null;}
+}
+
+async function loadFromDBInternal() {
   const loadGeneration=++dbLoadGeneration;
   setDbDot('sync');
   setDbStatus('☁️ 서버에서 불러오는 중...');
@@ -1378,6 +1404,7 @@ async function loadFromDB() {
     localStorage.setItem('sd_names', JSON.stringify(residentNames));
     localStorage.setItem('sd_users', JSON.stringify(users));
     setDbDot('ok');
+    dbServiceRestricted = false;
     setDbStatus('✅ 동기화 완료 ('+new Date().toLocaleTimeString('ko-KR')+')');
     lastSyncTime = new Date();
     lastLoadFromDbTime = Date.now(); // 멀티디바이스 stale-write 방지: 마지막 DB 읽기 시각 기록
@@ -1385,17 +1412,25 @@ async function loadFromDB() {
     return true;
   } catch(e) {
     console.error('loadFromDB error:', e);
-    lastDbError = e && e.message ? e.message : String(e);
+    dbServiceRestricted = !!(e&&(e.code==='exceed_egress_quota'||e.status===402));
+    lastDbError = friendlyDbError(e);
     setDbDot('err');
-    setDbStatus('❌ 연결 오류: '+e.message);
+    setDbStatus('❌ '+lastDbError);
     return false;
   }
 }
 
 
 async function syncFromDB() {
+  dbServiceRestricted=false; // 관리자가 제한을 해제한 뒤 수동 재시도할 수 있게 함
   const ok = await loadFromDB();
   if (ok) { renderAll(); renderNames(); showToast('동기화 완료','ok'); }
+  else { showToast('⚠️ '+lastDbError,'err'); }
+}
+
+function shouldAutoRefresh(maxAge=DB_STALE_MS){
+  return !dbServiceRestricted && pendingMutation===0 &&
+    (!lastLoadFromDbTime || Date.now()-lastLoadFromDbTime>=maxAge);
 }
 
 // syncTime 표시 영역(헤더의 동기화 버튼 라벨)을 마지막 동기화 시각으로 갱신.
@@ -2714,9 +2749,9 @@ function renderCurrentTab() {
 }
 
 // ── TABS ──
-// 데이터를 직접 보여주는 탭들은 캐시된 로컬 상태가 아니라 항상 DB에서 새로
-// 읽어온 뒤 렌더링한다 (속도가 늦어도 정확성을 우선). 캐시는 오프라인 임시
-// 백업 용도로만 두고, 화면 표시의 기준으로 쓰지 않는다.
+// 데이터를 직접 보여주는 탭은 마지막 DB 조회가 5분 이상 지난 경우에만 갱신한다.
+// 탭 이동마다 전체 테이블을 받던 구조는 Egress를 과도하게 사용하므로 제거했다.
+// 즉시 확인이 필요하면 헤더의 수동 동기화 버튼을 사용한다.
 const DB_BACKED_TABS = new Set(['dates','nursing','welfare','resview','residents','discharged']);
 
 async function switchTab(name) {
@@ -2727,7 +2762,7 @@ async function switchTab(name) {
   const idx={resview:0,dates:1,nursing:2,welfare:3,input:4,residents:5,discharged:6,admin:7};
   document.querySelectorAll('.ntab')[idx[name]].classList.add('active');
 
-  if (DB_BACKED_TABS.has(name) && pendingMutation===0) {
+  if (DB_BACKED_TABS.has(name) && shouldAutoRefresh()) {
     showToast('☁️ 서버에서 불러오는 중...', '');
     const ok = await loadFromDB();
     if (!ok) { showToast('⚠️ 서버 연결 실패: '+lastDbError.slice(0,80), 'err'); }
@@ -3152,6 +3187,7 @@ function loginSuccess(u){
   sessionStorage.setItem('sd_user', JSON.stringify({id:u.id,name:u.name,role:u.role}));
   document.getElementById('loginOverlay').style.display='none';
   document.getElementById('userInfo').style.display='flex';
+  document.getElementById('syncBtn').style.display='inline-flex';
   document.getElementById('userNameDisp').textContent=u.name+'님';
   if(u.role==='admin') document.getElementById('adminTab').style.display='';
   document.getElementById('loginErr').style.display='none';
@@ -3164,6 +3200,7 @@ function doLogout(){
   sessionStorage.removeItem('sd_user');
   document.getElementById('loginOverlay').style.display='flex';
   document.getElementById('userInfo').style.display='none';
+  document.getElementById('syncBtn').style.display='none';
   document.getElementById('adminTab').style.display='none';
   document.getElementById('loginId').value='';
   document.getElementById('loginPw').value='';
@@ -3868,7 +3905,11 @@ window.onload = async () => {
   {
     const ok=await loadFromDB();
     if(ok){ renderAll(); renderNames(); }
-    else { showToast('⚠️ 서버 연결 실패: '+lastDbError.slice(0,80), 'err'); }
+    else {
+      // 제한/장애 중에는 마지막 로컬 캐시를 읽기 전용 참고 화면으로 보여준다.
+      renderAll(); renderNames();
+      showToast('⚠️ '+lastDbError, 'err');
+    }
   }
   updateAllBadges();
 
@@ -3888,27 +3929,27 @@ window.onload = async () => {
     document.getElementById('loginOverlay').style.display='flex';
   }
 
-  // 서버 변경을 주기적으로 받아오기만 한다. 과거에는 60초마다 로컬 전체
-  // 데이터를 saveToDB()로 다시 써서 다른 기기의 삭제/수정을 되돌릴 수 있었다.
-  // 명시적인 사용자 변경은 save() 또는 대상별 REST 요청이 즉시 저장한다.
+  // 전체 테이블을 15초마다 다시 받으면 Supabase Egress를 과도하게 사용한다.
+  // 자동 전체 동기화는 5분 간격으로 제한하고, 탭/포커스 이벤트도 마지막 조회 후
+  // 5분이 지나야 실행한다. 명시적인 사용자 변경은 기존처럼 즉시 저장한다.
   setInterval(async()=>{
-    if(pendingMutation===0 && document.visibilityState==='visible'){
+    if(document.visibilityState==='visible' && shouldAutoRefresh(DB_AUTO_REFRESH_MS)){
       const ok=await loadFromDB();
       if(ok){renderCurrentTab(); if(currentTab==='residents')renderNames();}
     }
     updateSyncLabel();
-  }, 15000);
+  }, DB_AUTO_REFRESH_MS);
   setInterval(updateSyncLabel, 10000);
 
   document.addEventListener('visibilitychange', async()=>{
-    if(document.visibilityState==='visible' && pendingMutation===0){
+    if(document.visibilityState==='visible' && shouldAutoRefresh()){
       const ok=await loadFromDB();
       if(ok){renderAll();renderNames();}
     }
   });
 
   window.addEventListener('focus', async()=>{
-    if(pendingMutation===0){
+    if(shouldAutoRefresh()){
       const ok=await loadFromDB(); if(ok){renderAll();renderNames();}
     }
   });
