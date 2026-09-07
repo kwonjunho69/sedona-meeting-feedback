@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-09-04-1';
+    var APP_VERSION = 'v2026-09-07-1';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -790,6 +790,10 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="dbRecoveryNotice" style="display:none;position:sticky;bottom:0;z-index:9999;background:#fff3cd;color:#664d03;padding:12px;border:1px solid #ffca2c">
+  <span id="dbRecoveryMessage"></span>
+  <button onclick="exportLocalRecovery()" style="margin:6px;padding:8px">📥 이 기기 자료 백업</button>
+</div>
 
 <script>
 // ══════════════════════════
@@ -1015,7 +1019,27 @@ function matchResidentName(inputName) {
 }
 
 // ── PERSIST (localStorage + Firebase) ──
+function preserveLocalRecovery(){
+  const raw=localStorage.getItem('sd_meetings');
+  if(raw&&raw!=='[]'&&!localStorage.getItem('sd_recovery_original')){
+    localStorage.setItem('sd_recovery_original',raw);
+  }
+}
+function showRecoveryNotice(message){
+  document.getElementById('dbRecoveryMessage').textContent=message;
+  document.getElementById('dbRecoveryNotice').style.display='block';
+}
+function exportLocalRecovery(){
+  const data={exportedAt:new Date().toISOString(),meetings,
+    originalMeetings:JSON.parse(localStorage.getItem('sd_recovery_original')||'[]'),
+    residents:residentNames,deletedFeedbackIds:[...deletedFbIds]};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;
+  a.download='sedona-recovery-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
+}
 function save() {
+  preserveLocalRecovery();
   localStorage.setItem('sd_meetings', JSON.stringify(meetings));
   localStorage.setItem('sd_names', JSON.stringify(residentNames));
   localStorage.setItem('sd_users', JSON.stringify(users));
@@ -1248,6 +1272,7 @@ async function saveToDB() {
       const msg = fbErr && fbErr.message ? fbErr.message : String(fbErr);
       showToast('⚠️ feedbacks 저장 실패: ' + msg.slice(0,60), 'err');
       console.error('feedbacks save error:', msg);
+      throw fbErr; // 일부 저장 실패를 전체 성공으로 표시하지 않는다.
     }
 
     // 3. 처리상태 upsert
@@ -1289,6 +1314,7 @@ async function saveToDB() {
     setDbDot('ok');
     lastSyncTime = new Date();
     updateSyncLabel();
+    return true;
   } catch(e) {
     console.error('saveToDB error:', e);
     dbServiceRestricted = !!(e&&(e.code==='exceed_egress_quota'||e.status===402));
@@ -1297,6 +1323,8 @@ async function saveToDB() {
     document.getElementById('syncIcon').textContent = '❌';
     setDbStatus('❌ '+lastDbError);
     showToast('⚠️ DB 저장 오류: '+lastDbError, 'err');
+    showRecoveryNotice('서버 저장 실패. 이 기기의 자료를 백업하세요. '+lastDbError);
+    return false;
   }
 }
 
@@ -1315,6 +1343,7 @@ async function loadFromDB() {
 }
 
 async function loadFromDBInternal() {
+  preserveLocalRecovery(); // 서버 조회가 성공해도 기존 휴대폰 자료의 복구 사본을 보존
   const loadGeneration=++dbLoadGeneration;
   setDbDot('sync');
   setDbStatus('☁️ 서버에서 불러오는 중...');
@@ -1416,6 +1445,7 @@ async function loadFromDBInternal() {
     lastDbError = friendlyDbError(e);
     setDbDot('err');
     setDbStatus('❌ '+lastDbError);
+    showRecoveryNotice('현재 화면은 이 기기에 남은 자료일 수 있으며 다른 기기와 다를 수 있습니다. '+lastDbError);
     return false;
   }
 }
@@ -1489,6 +1519,7 @@ function updateApiStatus() {
 
 // ── 피드백별 처리이력 즉시 DB 저장 ──
 async function saveFbStatusToDB(meetingId, feedbackId) {
+  await dbSaveQueue; // 부모 회의 등록보다 처리이력 저장이 먼저 실행되는 것을 방지
   const m = meetings.find(x=>x.id===meetingId);
   if (!m) return;
   const fb = (m.feedbacks||[]).find(f=>f.id===feedbackId);
@@ -1514,7 +1545,9 @@ async function saveFbStatusToDB(meetingId, feedbackId) {
   } catch(e) {
     console.error('처리이력 저장 실패:', e);
     setDbDot('err');
-    showToast('DB 저장 실패 — 로컬에만 저장됨', 'err');
+    lastDbError=friendlyDbError(e);
+    showToast('처리이력 저장 실패: '+lastDbError, 'err');
+    showRecoveryNotice('처리이력이 서버에 저장되지 않았습니다. 이 기기의 자료를 백업하세요. '+lastDbError);
   }
 }
 
@@ -2833,7 +2866,7 @@ document.addEventListener('click', function(e){
 });
 
 // 어르신 개별 상태 입력 등록
-function addResidentEntry(){
+async function addResidentEntry(){
   const dateVal = document.getElementById('resEntryDate').value;
   const nameRaw = document.getElementById('resEntryName').value.trim();
   const text = document.getElementById('resEntryText').value.trim();
@@ -2871,9 +2904,10 @@ function addResidentEntry(){
   }
   m.feedbacks.push(newFb);
 
-  save();
+  const saved=await save();
   renderAll();
-  showToast(`${finalName} 님 ${dateVal} 상태가 등록되었습니다.`,'ok');
+  if(!saved){showToast('서버 등록 실패. 입력 내용은 이 기기에 보관되어 있습니다. 백업 후 복구가 필요합니다.','err');return;}
+  showToast(`${finalName} 님 ${dateVal} 상태가 서버에 등록되었습니다.`,'ok');
 
   document.getElementById('resEntryName').value='';
   document.getElementById('resEntryText').value='';
