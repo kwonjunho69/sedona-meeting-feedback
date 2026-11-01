@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-09-07-1';
+    var APP_VERSION = 'v2026-11-01-1';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -828,11 +828,11 @@ let individualFbIds = new Set(
 );
 function markFbAsIndividual(fbId) {
   individualFbIds.add(fbId);
-  localStorage.setItem('sd_individual_fb_ids', JSON.stringify([...individualFbIds]));
+  safeLocalSet('sd_individual_fb_ids', JSON.stringify([...individualFbIds]));
 }
 function unmarkFbAsIndividual(fbId) {
   individualFbIds.delete(fbId);
-  localStorage.setItem('sd_individual_fb_ids', JSON.stringify([...individualFbIds]));
+  safeLocalSet('sd_individual_fb_ids', JSON.stringify([...individualFbIds]));
 }
 // 명시적으로 삭제된 피드백 ID 집합
 // ── localStorage 영속: TTL 대신 loadFromDB()에서 DB 부재 확인 후 정리
@@ -843,12 +843,12 @@ const deletedFbIds = new Set(
 );
 function markFbDeleted(id) {
   deletedFbIds.add(id);
-  localStorage.setItem('sd_deleted_fb_ids', JSON.stringify([...deletedFbIds]));
+  safeLocalSet('sd_deleted_fb_ids', JSON.stringify([...deletedFbIds]));
   // TTL 없음 → loadFromDB()에서 DB 부재 확인 후 자동 정리
 }
 function unmarkFbDeleted(id) {
   deletedFbIds.delete(id);
-  localStorage.setItem('sd_deleted_fb_ids', JSON.stringify([...deletedFbIds]));
+  safeLocalSet('sd_deleted_fb_ids', JSON.stringify([...deletedFbIds]));
 }
 
 // 이 세션(페이지 로드 이후)에서 새로 생성된 피드백 ID 집합
@@ -1019,10 +1019,29 @@ function matchResidentName(inputName) {
 }
 
 // ── PERSIST (localStorage + Firebase) ──
+let recoveryInMemory = null;
+function safeLocalSet(key, value){
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch(e) {
+    // 캐시 실패가 서버 동기화를 막지 않도록 격리. 기존 자료는 삭제하지 않는다.
+    console.warn('Local cache write failed:', key, e.name);
+    showRecoveryNotice('브라우저 저장공간 부족 또는 접근 제한으로 이 기기에 사본을 저장하지 못했습니다. 서버 연결은 계속 시도합니다. 서버 저장 실패 시 창을 닫기 전에 복구용 백업을 다운로드하세요.');
+    return false;
+  }
+}
 function preserveLocalRecovery(){
-  const raw=localStorage.getItem('sd_meetings');
-  if(raw&&raw!=='[]'&&!localStorage.getItem('sd_recovery_original')){
-    localStorage.setItem('sd_recovery_original',raw);
+  try {
+    const saved=localStorage.getItem('sd_recovery_original');
+    if(saved){ recoveryInMemory=saved; return; }
+    const raw=recoveryInMemory || localStorage.getItem('sd_meetings');
+    if(raw&&raw!=='[]'){
+      recoveryInMemory=raw;
+      safeLocalSet('sd_recovery_original',raw);
+    }
+  } catch(e) {
+    showRecoveryNotice('브라우저 복구 사본을 읽지 못했습니다. 서버 조회는 계속 진행합니다.');
   }
 }
 function showRecoveryNotice(message){
@@ -1031,7 +1050,7 @@ function showRecoveryNotice(message){
 }
 function exportLocalRecovery(){
   const data={exportedAt:new Date().toISOString(),meetings,
-    originalMeetings:JSON.parse(localStorage.getItem('sd_recovery_original')||'[]'),
+    originalMeetings:JSON.parse(recoveryInMemory||'[]'),
     residents:residentNames,deletedFeedbackIds:[...deletedFbIds]};
   const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
   const a=document.createElement('a');a.href=url;
@@ -1040,9 +1059,9 @@ function exportLocalRecovery(){
 }
 function save() {
   preserveLocalRecovery();
-  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
-  localStorage.setItem('sd_names', JSON.stringify(residentNames));
-  localStorage.setItem('sd_users', JSON.stringify(users));
+  safeLocalSet('sd_meetings', JSON.stringify(meetings));
+  safeLocalSet('sd_names', JSON.stringify(residentNames));
+  safeLocalSet('sd_users', JSON.stringify(users));
   // 저장이 끝날 때까지 자동/포커스 DB 조회가 로컬 변경을 덮지 못하게 막는다.
   // 짧은 시간에 여러 저장이 발생해도 반드시 요청 순서대로 실행한다.
   pendingMutation++;
@@ -1102,7 +1121,7 @@ function loadStorage() {
     apiKey  = localStorage.getItem('sd_api')   || _DEF_API;
     modelId = localStorage.getItem('sd_model') || 'gemini-2.5-flash';
     // 기본값을 localStorage에도 저장
-    if(!localStorage.getItem('sd_api')) localStorage.setItem('sd_api', apiKey);
+    if(!localStorage.getItem('sd_api')) safeLocalSet('sd_api', apiKey);
     // 사용자 목록 로드
     const u = localStorage.getItem('sd_users');
     users = u ? JSON.parse(u) : [...DEFAULT_USERS];
@@ -1378,7 +1397,7 @@ async function loadFromDBInternal() {
     // ─────────────────────────────────────────────────────────────────
     if (deletedFbIds.size > 0) {
       deletedFbIds.clear();
-      localStorage.setItem('sd_deleted_fb_ids', '[]');
+      safeLocalSet('sd_deleted_fb_ids', '[]');
     }
 
     meetings = meetData.map(m => {
@@ -1429,9 +1448,9 @@ async function loadFromDBInternal() {
       if(!users.find(u=>u.id==='admin')) users.unshift(...DEFAULT_USERS);
     }
 
-    localStorage.setItem('sd_meetings', JSON.stringify(meetings));
-    localStorage.setItem('sd_names', JSON.stringify(residentNames));
-    localStorage.setItem('sd_users', JSON.stringify(users));
+    safeLocalSet('sd_meetings', JSON.stringify(meetings));
+    safeLocalSet('sd_names', JSON.stringify(residentNames));
+    safeLocalSet('sd_users', JSON.stringify(users));
     setDbDot('ok');
     dbServiceRestricted = false;
     setDbStatus('✅ 동기화 완료 ('+new Date().toLocaleTimeString('ko-KR')+')');
@@ -1503,8 +1522,8 @@ function closeApiModal() { document.getElementById('apiModal').classList.remove(
 function saveApi() {
   apiKey = document.getElementById('apiKeyIn').value.trim();
   modelId = document.getElementById('modelIn').value;
-  localStorage.setItem('sd_api', apiKey);
-  localStorage.setItem('sd_model', modelId);
+  safeLocalSet('sd_api', apiKey);
+  safeLocalSet('sd_model', modelId);
   closeApiModal(); updateApiStatus(); showToast('저장되었습니다.','ok');
 }
 function delApi() {
@@ -1629,7 +1648,7 @@ function confirmNote() {
   pendingNote = null;
   closeNoteModal();
   saveFbStatusToDB(mid, fid);
-  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  safeLocalSet('sd_meetings', JSON.stringify(meetings));
   renderAll();
   showToast(isAdd ? '추가처리 등록됨 ✅' : '처리완료 저장됨', 'ok');
 }
@@ -2121,7 +2140,7 @@ function deleteFbLog(meetingId, feedbackId, logIdx) {
   // 이력이 모두 삭제되면 미처리로 복귀
   if (st.logs.length === 0) st.done = false;
   saveFbStatusToDB(meetingId, feedbackId);
-  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  safeLocalSet('sd_meetings', JSON.stringify(meetings));
   renderAll();
   showToast(st.logs.length === 0 ? '이력 삭제 — 미처리로 복귀됨' : '이력 삭제됨');
 }
@@ -2237,7 +2256,7 @@ async function deleteMeeting(id) {
   pendingMutation++;
   try {
     meetings=meetings.filter(x=>x.id!==id);
-    localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+    safeLocalSet('sd_meetings', JSON.stringify(meetings));
     try { renderDates(); updateAllBadges(); } catch(renderErr) { console.error('deleteMeeting render error:', renderErr); }
     showToast('삭제 중...', '');
     try {
@@ -2260,7 +2279,7 @@ async function deleteMeeting(id) {
         meetings = (JSON.parse(localStorage.getItem('sd_meetings')||'[]'));
         // 방금 메모리에서 지운 meeting 복구: DB에 여전히 있으니 표시해야 함
         if (!meetings.find(x=>x.id===id)) meetings.push(m);
-        localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+        safeLocalSet('sd_meetings', JSON.stringify(meetings));
         try { renderDates(); } catch(e2){}
         showToast('⚠️ DB 삭제 실패 — Supabase 대시보드에서 fix_cascade_and_rls.sql을 실행해주세요', 'err');
         return;
@@ -2968,7 +2987,7 @@ async function editResidentRoom(i){
   if(nextRoom===previousRoom)return;
 
   resident.room=nextRoom;
-  localStorage.setItem('sd_names',JSON.stringify(residentNames));
+  safeLocalSet('sd_names',JSON.stringify(residentNames));
   renderNames();renderAll();
   pendingMutation++;
   try{
@@ -2985,7 +3004,7 @@ async function editResidentRoom(i){
     showToast(`${resName(resident)} 어르신 호실 수정 완료`,'ok');
   }catch(e){
     resident.room=previousRoom;
-    localStorage.setItem('sd_names',JSON.stringify(residentNames));
+    safeLocalSet('sd_names',JSON.stringify(residentNames));
     renderNames();renderAll();
     showToast('호실 수정 실패: '+e.message.slice(0,45),'err');
   }finally{
@@ -3009,7 +3028,7 @@ async function toggleResidentDischarge(i){
   const previous={discharged:resDischarged(resident),dischargedAt:resDischargedAt(resident)};
   resident.discharged=next;
   resident.dischargedAt=next?new Date().toISOString().slice(0,10):'';
-  localStorage.setItem('sd_names',JSON.stringify(residentNames));
+  safeLocalSet('sd_names',JSON.stringify(residentNames));
   renderNames();renderAll();renderDischarged();
   showToast(`${action} 저장 중...`);
 
@@ -3032,7 +3051,7 @@ async function toggleResidentDischarge(i){
   }catch(e){
     resident.discharged=previous.discharged;
     resident.dischargedAt=previous.dischargedAt;
-    localStorage.setItem('sd_names',JSON.stringify(residentNames));
+    safeLocalSet('sd_names',JSON.stringify(residentNames));
     renderNames();renderAll();renderDischarged();
     showToast(`${action} 처리 실패: ${e.message.slice(0,45)}`,'err');
   }finally{
@@ -3115,7 +3134,7 @@ function delName(i){
   const nm=resName(r);
   if(!confirm(`"${nm}" 삭제?`))return;
   residentNames.splice(i,1);
-  localStorage.setItem('sd_names', JSON.stringify(residentNames));
+  safeLocalSet('sd_names', JSON.stringify(residentNames));
   renderNames();showToast(nm+' 삭제됨');
   sbFetch('/residents?name=eq.'+encodeURIComponent(nm),{method:'DELETE',headers:{'Prefer':'return=minimal'}})
     .catch(e=>console.warn('resident DB delete error:',e));
@@ -3123,7 +3142,7 @@ function delName(i){
 function clearNames(){
   if(!confirm('어르신 명단을 전체 삭제하시겠습니까?\nDB에서도 삭제됩니다.'))return;
   residentNames=[];
-  localStorage.setItem('sd_names', JSON.stringify(residentNames));
+  safeLocalSet('sd_names', JSON.stringify(residentNames));
   renderNames();
   showToast('삭제 중...','');
   sbFetch('/residents?id=gt.0',{method:'DELETE',headers:{'Prefer':'return=minimal'}})
@@ -3277,7 +3296,7 @@ function addUser(){
   if(users.find(function(u){return u.id===id;})){showToast('이미 있는 아이디입니다','err');return;}
   const newU={id:id,name:nm,password:pw,role:'user'};
   users.push(newU);
-  localStorage.setItem('sd_users', JSON.stringify(users));
+  safeLocalSet('sd_users', JSON.stringify(users));
   renderUserList();
   document.getElementById('newUserId').value='';
   document.getElementById('newUserName').value='';
@@ -3297,7 +3316,7 @@ function delUser(id){
   if(!u||!confirm('"'+u.name+'" 계정을 삭제하시겠습니까?'))return;
   var nm=u.name;
   users=users.filter(function(x){return x.id!==id;});
-  localStorage.setItem('sd_users', JSON.stringify(users));
+  safeLocalSet('sd_users', JSON.stringify(users));
   renderUserList();showToast(nm+' 삭제 중...','');
   sbFetch('/app_users?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:{'Prefer':'return=minimal'}})
     .then(()=>showToast(nm+' 삭제됨','ok'))
@@ -3625,7 +3644,7 @@ async function confirmAddFb() {
 
   m.feedbacks.push(newFb);
   closeAddFbModal();
-  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  safeLocalSet('sd_meetings', JSON.stringify(meetings));
   renderAll();
   showToast(resident + ' 어르신 피드백 저장 중...');
 
@@ -3650,7 +3669,7 @@ async function confirmAddFb() {
   } catch(e) {
     // DB에 실패한 항목을 화면에 성공한 것처럼 남기지 않는다.
     m.feedbacks = m.feedbacks.filter(f=>f.id!==newFb.id);
-    localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+    safeLocalSet('sd_meetings', JSON.stringify(meetings));
     renderAll();
     console.warn('feedback DB save failed', e);
     showToast('피드백 추가 실패: '+e.message.slice(0,50), 'err');
@@ -3710,7 +3729,7 @@ async function saveFeedbackEdit(){
   f.text = newText;
 
   closeFbEditModal();
-  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  safeLocalSet('sd_meetings', JSON.stringify(meetings));
   renderCurrentTab();
   updateAllBadges();
 
@@ -3761,7 +3780,7 @@ async function performFeedbackDelete(meetingId, feedbackId, opts={}){
     //    아래에서 예외를 던지더라도 DB 동기화 코드는 반드시 실행되도록 분리함)
     m.feedbacks = m.feedbacks.filter(x=>x.id!==fid);
     if(m.feedbackStatus) delete m.feedbackStatus[fid];
-    localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+    safeLocalSet('sd_meetings', JSON.stringify(meetings));
 
     // 화면 갱신은 실패해도(예외 발생해도) DB 동기화를 막지 않도록 별도 try/catch로 격리
     try {
@@ -3857,7 +3876,7 @@ async function deleteMeetingSummary(meetingId){
 
   m.summary = '';
   m.keyIssues = [];
-  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  safeLocalSet('sd_meetings', JSON.stringify(meetings));
   renderDates();
   showToast('삭제 중...');
 
@@ -3886,7 +3905,7 @@ async function saveSummaryEdit(){
   m.keyIssues = document.getElementById('summaryEditIssues').value
     .split('\n').map(s=>s.trim()).filter(Boolean);
   closeSummaryEditModal();
-  localStorage.setItem('sd_meetings', JSON.stringify(meetings));
+  safeLocalSet('sd_meetings', JSON.stringify(meetings));
   renderDates();
   showToast('요약 저장 중...');
   pendingMutation++;
@@ -3925,8 +3944,8 @@ window.onload = async () => {
   try {
     const hash=new URLSearchParams(window.location.hash.slice(1));
     let changed=false;
-    if(hash.get('api')){apiKey=hash.get('api');localStorage.setItem('sd_api',apiKey);changed=true;}
-    if(hash.get('m')){modelId=hash.get('m');localStorage.setItem('sd_model',modelId);}
+    if(hash.get('api')){apiKey=hash.get('api');safeLocalSet('sd_api',apiKey);changed=true;}
+    if(hash.get('m')){modelId=hash.get('m');safeLocalSet('sd_model',modelId);}
     if(changed){history.replaceState(null,'',window.location.pathname);}
   }catch(e){}
 
