@@ -7,7 +7,7 @@
 // 새로 받아오게 되어 "PC는 되는데 휴대폰만 옛 화면" 같은 문제를 막아준다.
 (function(){
   try {
-    var APP_VERSION = 'v2026-11-01-1';
+    var APP_VERSION = 'v2026-11-01-2';
     if (sessionStorage.getItem('sd_app_version') !== APP_VERSION) {
       sessionStorage.setItem('sd_app_version', APP_VERSION);
       location.replace(location.pathname + '?v=' + APP_VERSION + '&t=' + Date.now());
@@ -790,7 +790,9 @@ hr{border:none;border-top:1px solid var(--g200);margin:10px 0}
 </div>
 
 <div class="toast" id="toast"></div>
+<button id="dbRecoveryBadge" onclick="openRecoveryNotice()" title="백업 상태 자세히 보기" style="display:none;position:fixed;right:12px;bottom:12px;z-index:9998;background:#fff3cd;color:#664d03;border:1px solid #ffca2c;border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer">⚠ 로컬 백업 불가</button>
 <div id="dbRecoveryNotice" style="display:none;position:sticky;bottom:0;z-index:9999;background:#fff3cd;color:#664d03;padding:12px;border:1px solid #ffca2c">
+  <button onclick="closeRecoveryNotice()" aria-label="백업 안내 닫기" style="float:right;margin-left:8px;padding:4px 8px;cursor:pointer">닫기 ×</button>
   <span id="dbRecoveryMessage"></span>
   <button onclick="exportLocalRecovery()" style="margin:6px;padding:8px">📥 이 기기 자료 백업</button>
 </div>
@@ -1020,6 +1022,7 @@ function matchResidentName(inputName) {
 
 // ── PERSIST (localStorage + Firebase) ──
 let recoveryInMemory = null;
+let recoveryNoticeIsServerError = false;
 function safeLocalSet(key, value){
   try {
     localStorage.setItem(key, value);
@@ -1027,7 +1030,7 @@ function safeLocalSet(key, value){
   } catch(e) {
     // 캐시 실패가 서버 동기화를 막지 않도록 격리. 기존 자료는 삭제하지 않는다.
     console.warn('Local cache write failed:', key, e.name);
-    showRecoveryNotice('브라우저 저장공간 부족 또는 접근 제한으로 이 기기에 사본을 저장하지 못했습니다. 서버 연결은 계속 시도합니다. 서버 저장 실패 시 창을 닫기 전에 복구용 백업을 다운로드하세요.');
+    showRecoveryNotice('브라우저 저장공간 부족 또는 접근 제한으로 이 기기에 사본을 저장하지 못했습니다. 서버 연결은 계속 시도합니다. 서버 저장 실패 시 창을 닫기 전에 복구용 백업을 다운로드하세요.', 'local');
     return false;
   }
 }
@@ -1041,12 +1044,26 @@ function preserveLocalRecovery(){
       safeLocalSet('sd_recovery_original',raw);
     }
   } catch(e) {
-    showRecoveryNotice('브라우저 복구 사본을 읽지 못했습니다. 서버 조회는 계속 진행합니다.');
+    showRecoveryNotice('브라우저 복구 사본을 읽지 못했습니다. 서버 조회는 계속 진행합니다.', 'local');
   }
 }
-function showRecoveryNotice(message){
+function showRecoveryNotice(message, kind='server'){
+  // 반복되는 캐시 경고가 중요한 서버 오류를 덮어쓰거나 안내를 다시 펼치지 않는다.
+  if(kind==='local' && recoveryNoticeIsServerError) return;
+  recoveryNoticeIsServerError = kind==='server';
   document.getElementById('dbRecoveryMessage').textContent=message;
+  document.getElementById('dbRecoveryBadge').textContent=recoveryNoticeIsServerError
+    ? '⚠ 서버 동기화 오류' : '⚠ 로컬 백업 불가';
+  if(recoveryNoticeIsServerError) openRecoveryNotice();
+  else if(document.getElementById('dbRecoveryNotice').style.display!=='block') closeRecoveryNotice();
+}
+function openRecoveryNotice(){
   document.getElementById('dbRecoveryNotice').style.display='block';
+  document.getElementById('dbRecoveryBadge').style.display='none';
+}
+function closeRecoveryNotice(){
+  document.getElementById('dbRecoveryNotice').style.display='none';
+  document.getElementById('dbRecoveryBadge').style.display='block';
 }
 function exportLocalRecovery(){
   const data={exportedAt:new Date().toISOString(),meetings,
