@@ -37,6 +37,16 @@ async function check(failWrites) {
   if(failWrites) {
     assert.equal(cache.get('sd_meetings'), original);
     assert.ok(nodes.dbRecoveryMessage.textContent.includes('저장공간'));
+    assert.equal(nodes.dbRecoveryNotice.style.display, 'none');
+    assert.equal(nodes.dbRecoveryBadge.style.display, 'block');
+    vm.runInContext('openRecoveryNotice(); closeRecoveryNotice(); safeLocalSet("test", "x")', ctx);
+    assert.equal(nodes.dbRecoveryNotice.style.display, 'none');
+    vm.runInContext('showRecoveryNotice("server failed")', ctx);
+    assert.equal(nodes.dbRecoveryNotice.style.display, 'block');
+    vm.runInContext('safeLocalSet("test", "x")', ctx);
+    assert.equal(nodes.dbRecoveryMessage.textContent, 'server failed');
+    vm.runInContext('closeRecoveryNotice(); showRecoveryNotice("server failed again")', ctx);
+    assert.equal(nodes.dbRecoveryNotice.style.display, 'block');
   } else assert.equal(cache.get('sd_recovery_original'), original);
   vm.runInContext(section('function save() {', '// 어르신 명단 비파괴적'), ctx);
   ctx.dbSaveQueue = Promise.resolve();
